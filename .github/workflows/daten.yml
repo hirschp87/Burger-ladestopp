@@ -1,0 +1,84 @@
+name: Ladestopp-Daten aktualisieren
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  push:
+    paths: [".github/workflows/daten.yml"]
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Daten aus OpenStreetMap holen
+        run: |
+          cat > /tmp/build.mjs <<'SKRIPT'
+          // Baut stops.json: alle McDonald's und Burger King plus Ladesäulen im Umkreis von 500 m (Quelle: OpenStreetMap)
+          import { writeFileSync } from "node:fs";
+          const EPS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+          const LAENDER = ["DE", "AT", "CH", "NL", "BE", "LU", "DK"];
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          async function abfrage(q) {
+            for (let runde = 0; runde < 4; runde++) {
+              for (const ep of EPS) {
+                try {
+                  const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "burger-ladestopp-github-action" } });
+                  if (!r.ok) { console.log(ep, r.status); continue; }
+                  const j = await r.json();
+                  if (j.remark && /error|timed out|memory/i.test(j.remark)) { console.log(ep, j.remark); continue; }
+                  return j.elements || [];
+                } catch (e) { console.log(ep, e.message); }
+              }
+              await sleep(30000 * (runde + 1));
+            }
+            throw new Error("Overpass nicht erreichbar");
+          }
+          const R_TAGS = ["amenity", "name", "brand", "brand:wikidata", "addr:city", "addr:place", "addr:suburb", "addr:street", "addr:housenumber"];
+          const C_TAGS = ["amenity", "operator", "network", "brand", "capacity", "charging_station:output", "maxpower"];
+          function klein(tags, liste, sockets) {
+            const o = {};
+            for (const k in tags) if (liste.includes(k) || (sockets && k.startsWith("socket:"))) o[k] = tags[k];
+            return o;
+          }
+          const restaurants = new Map(), chargers = new Map();
+          for (const land of LAENDER) {
+            const q = `[out:json][timeout:900][maxsize:1073741824];
+          area["ISO3166-1"="${land}"][admin_level=2]->.a;
+          (
+            nwr["amenity"="fast_food"]["brand:wikidata"~"^(Q38076|Q177054)$"](area.a);
+            nwr["amenity"="fast_food"]["name"~"^(McDonald|Burger King)"](area.a);
+          )->.ff;
+          nwr(around.ff:500)["amenity"="charging_station"]->.ch;
+          (.ff;.ch;);
+          out center tags;`;
+            const els = await abfrage(q);
+            let nr = 0, nc = 0;
+            for (const el of els) {
+              const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+              if (lat == null) continue;
+              const t = el.tags || {}, id = el.type[0] + el.id;
+              const p = { id, lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+              if (t.amenity === "charging_station") { chargers.set(id, { ...p, tags: klein(t, C_TAGS, true) }); nc++; }
+              else { restaurants.set(id, { ...p, tags: klein(t, R_TAGS, false) }); nr++; }
+            }
+            console.log(land, nr, "Restaurants,", nc, "Ladesäulen");
+            await sleep(5000);
+          }
+          if (restaurants.size < 500) { console.log("Zu wenige Restaurants, alte Daten bleiben."); process.exit(1); }
+          writeFileSync("stops.json", JSON.stringify({ updated: new Date().toISOString().slice(0, 10), restaurants: [...restaurants.values()], chargers: [...chargers.values()] }));
+          console.log("Fertig:", restaurants.size, "Restaurants,", chargers.size, "Ladesäulen");
+          SKRIPT
+          node /tmp/build.mjs
+      - name: Speichern
+        run: |
+          git config user.name "Ladestopp-Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stops.json
+          git diff --cached --quiet || git commit -m "Ladestopp-Daten aktualisiert"
+          git push
