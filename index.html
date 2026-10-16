@@ -397,12 +397,40 @@ async function route(a, b, via){
   return {coords: rt.geometry.coordinates.map(c=>[c[1],c[0]]), km: rt.distance/1000, min: rt.duration/60};
 }
 const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
-// Ein Abschnitt der Route: zuerst nur Restaurants (schnell), dann Ladesäulen rund um die Treffer
+/* ---------- Fertige Datenliste (stops.json, wöchentlich von GitHub erzeugt) ---------- */
+let DATA = null;
+async function loadData(){
+  if(DATA) return DATA;
+  const urls = ["stops.json"];
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/i), repo = location.pathname.split("/").filter(Boolean)[0];
+  if(m && repo) urls.push(`https://raw.githubusercontent.com/${m[1]}/${repo}/main/stops.json`);
+  for(const u of urls){
+    try{
+      const r = await fetch(u, {cache:"no-cache"});
+      if(!r.ok) continue;
+      const j = await r.json();
+      if(j && j.restaurants && j.restaurants.length) { DATA = j; return j; }
+    }catch(e){}
+  }
+  return null;
+}
+function fromData(data, line, stepKm, opt){
+  // nur, was nah an der Route liegt (Abstand zum nächsten Stützpunkt der Linie)
+  const near = (o, maxM) => { for(const p of line){ if(hav([o.lat,o.lon], p) <= maxM) return true; } return false; };
+  const slack = stepKm*1000/2;
+  const ff = data.restaurants.filter(o => near(o, opt.detour + opt.walk + slack));
+  const ch = data.chargers.filter(o => near(o, opt.detour + opt.walk + slack));
+  const toEl = o => ({type:o.id[0], id:o.id.slice(1), lat:o.lat, lon:o.lon, tags:o.tags});
+  return {elements: ff.map(toEl).concat(ch.map(toEl)), ffCount: ff.length, chCount: ch.length};
+}
+
+// Live-Abfrage als Notlösung, falls die Datenliste fehlt
 async function overpassQuery(q){
   let lastErr;
   for(const ep of OVERPASS){
     try{
-      const r = await fetch(ep, {method:"POST", body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+      const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 45000);
+      const r = await fetch(ep, {method:"POST", signal:ctl.signal, body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}}).finally(() => clearTimeout(to));
       if(!r.ok){ lastErr = new Error("Status "+r.status); continue; }
       const j = await r.json();
       // Overpass meldet Zeitüberschreitung nur versteckt im Feld „remark“, bei leerer Trefferliste
@@ -567,6 +595,7 @@ function render(rt, stops, plan, car, opt){
     <span class="pill"><b>${charges.length}</b> Ladestopp${charges.length===1?"":"s"}</span>
     <span class="pill">${stops.length} Treffer an der Route</span>
     <span class="pill">${opt.ffCount} Restaurants · ${opt.chCount} Ladesäulen in der Nähe</span>
+    <span class="pill">${opt.dataDate ? "Daten vom " + new Date(opt.dataDate).toLocaleDateString("de-DE") : "Live-Daten"}</span>
     <span class="pill" style="border-radius:8px">Von: ${esc(opt.fromLabel)}</span>
     <span class="pill" style="border-radius:8px">Nach: ${esc(opt.toLabel)}</span>`;
   const bestIds = new Set(charges.map(l=>l.best.id));
@@ -651,8 +680,12 @@ $("go").addEventListener("click", async () => {
     const cum = cumulative(rt.coords);
     const line = sampleLine(rt.coords, cum, rt.km > 400 ? 4 : 2.5);
     status("Restaurants und Ladesäulen an der Strecke werden gesucht … (kann bei langen Strecken 20–40 Sekunden dauern)");
-    const res = await overpass(line, opt.detour, opt.walk, (i,n) => status(`Restaurants an der Strecke werden gesucht … Abschnitt ${i} von ${n}`));
-    status(`${res.ffCount} Restaurants gefunden · Ladesäulen werden geprüft …`);
+    status("Restaurants und Ladesäulen an der Strecke werden gesucht …");
+    const data = await loadData();
+    const step = rt.km > 400 ? 4 : 2.5;
+    const res = data ? fromData(data, line, step, opt)
+      : await overpass(line, opt.detour, opt.walk, (i,n) => status(`Restaurants an der Strecke werden gesucht (Live-Abfrage, langsam) … Abschnitt ${i} von ${n}`));
+    opt.dataDate = data ? data.updated : null;
     opt.ffCount = res.ffCount; opt.chCount = res.chCount;
     const stops = buildStops(res.elements, rt.coords, cum, opt);
     const car = readCar();
