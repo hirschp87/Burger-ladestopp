@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Burger-Ladestopp</title>
+<meta name="theme-color" content="#1b4f8f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Burger-Ladestopp">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: eine Spalte wie ein Handy-Formular; Ergebnisse als Autobahn-Wegweiser (blaue Tafel = Etappe, Zeilen = Ausfahrten mit Burger + Lader) */
+:root{
+  --bg:#eef1f5; --surface:#ffffff; --fg:#17202b; --muted:#5b6675; --line:#d5dbe3;
+  --sign:#1b4f8f; --sign-fg:#ffffff; --accent:#1b4f8f; --mc:#d6a400; --bk:#c4511d;
+  --ok:#1f7a45; --warn:#a15c00; --chip:#e3eaf3;
+  --display:"Barlow Semi Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f141b; --surface:#18202b; --fg:#e8edf3; --muted:#9aa6b5; --line:#2b3644;
+  --sign:#2a64ad; --sign-fg:#ffffff; --accent:#7fb0ee; --mc:#f0c22e; --bk:#ee7a45;
+  --ok:#5cc28a; --warn:#e8a54b; --chip:#223042; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141b; --surface:#18202b; --fg:#e8edf3; --muted:#9aa6b5; --line:#2b3644;
+  --sign:#2a64ad; --sign-fg:#ffffff; --accent:#7fb0ee; --mc:#f0c22e; --bk:#ee7a45;
+  --ok:#5cc28a; --warn:#e8a54b; --chip:#223042; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:calc(12px + env(safe-area-inset-top,0px)) calc(32px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:center;gap:12px;padding-block:6px}
+.logo{width:44px;height:44px;border-radius:8px;background:var(--sign);display:grid;place-items:center;flex:none;border:2px solid var(--sign-fg);outline:2px solid var(--sign)}
+h1{font:700 1.65rem/1.1 var(--display);margin:0;letter-spacing:.01em;text-wrap:balance}
+.sub{color:var(--muted);font-size:.9rem;margin:2px 0 0}
+section.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px}
+h2{font:600 1.05rem/1.2 var(--display);text-transform:uppercase;letter-spacing:.06em;margin:0;color:var(--muted)}
+label{display:flex;flex-direction:column;gap:4px;font-size:.88rem;color:var(--muted);min-width:0}
+input,select,button{font:inherit;color:inherit}
+input[type=text],input[type=number],select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font-size:1rem}
+input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:380px){.row3{grid-template-columns:1fr 1fr}}
+.inline{display:flex;gap:8px;align-items:stretch}
+.inline input{flex:1;min-width:0}
+.btn{border:0;border-radius:8px;padding:10px 14px;cursor:pointer;background:var(--chip);color:var(--fg);font-weight:600}
+.btn.primary{background:var(--sign);color:var(--sign-fg);font:700 1.15rem var(--display);letter-spacing:.03em;padding:14px;width:100%}
+.btn.primary:disabled{opacity:.6;cursor:wait}
+.btn.small{padding:8px 10px;font-size:.9rem;white-space:nowrap}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.check{flex-direction:row;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;color:var(--fg);font-size:.95rem;cursor:pointer}
+.check input{width:18px;height:18px;margin:0;accent-color:var(--sign)}
+details.car{border-top:1px solid var(--line);padding-top:10px}
+details summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:.92rem}
+.hint{font-size:.85rem;color:var(--muted);margin:0}
+.status{font-size:.95rem;padding:10px 12px;border-radius:8px;background:var(--chip)}
+.status.err{color:var(--warn)}
+#map{height:280px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:0}
+.summary{display:flex;flex-wrap:wrap;gap:8px}
+.pill{background:var(--chip);border-radius:999px;padding:5px 12px;font-size:.92rem;font-variant-numeric:tabular-nums}
+.pill b{font-weight:600}
+/* Etappen-Schild */
+.leg{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.leg-head{background:var(--sign);color:var(--sign-fg);padding:10px 14px;display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.leg-head strong{font:700 1.2rem var(--display);letter-spacing:.02em}
+.leg-head span{font:600 1rem var(--display);font-variant-numeric:tabular-nums;opacity:.95}
+.leg-note{padding:10px 14px;font-size:.92rem;color:var(--muted);border-bottom:1px solid var(--line)}
+.leg-note.warn{color:var(--warn)}
+.stop{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.stop:last-child{border-bottom:0}
+.stop.best{background:color-mix(in srgb,var(--sign) 9%,var(--surface))}
+.km{font:700 1.35rem/1 var(--display);font-variant-numeric:tabular-nums;text-align:right;padding-top:2px}
+.km small{display:block;font:500 .72rem var(--body);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.stop-body{min-width:0;display:flex;flex-direction:column;gap:6px}
+.stop-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600}
+.brand{font:700 .78rem var(--display);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;color:#fff}
+.brand.mc{background:var(--mc);color:#3a2b00}
+.brand.bk{background:var(--bk)}
+.tag-best{font:700 .75rem var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--ok);border:1.5px solid var(--ok);border-radius:4px;padding:1px 6px}
+.meta{font-size:.9rem;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.meta b{color:var(--fg);font-weight:600}
+.links{display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-size:.9rem;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.empty{text-align:center;color:var(--muted);padding:18px 8px;font-size:.95rem}
+footer{font-size:.8rem;color:var(--muted);text-align:center}
+footer a{color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 5 13h6l-1 9 8-12h-6z"/></svg>
+    </div>
+    <div>
+      <h1>Burger-Ladestopp</h1>
+      <p class="sub">Schnelllader mit McDonald's oder Burger King in Laufweite</p>
+    </div>
+  </header>
+
+  <section class="card" aria-labelledby="h-car">
+    <h2 id="h-car">Auto</h2>
+    <label>Modell
+      <select id="car"></select>
+    </label>
+    <details class="car" id="carDetails">
+      <summary>Werte anpassen</summary>
+      <div class="row" style="margin-top:10px">
+        <label>Nutzbarer Akku (kWh)<input id="cUsable" type="number" step="0.1" min="10" max="200" inputmode="decimal"></label>
+        <label>Verbrauch Autobahn (kWh/100 km)<input id="cCons" type="number" step="0.1" min="8" max="45" inputmode="decimal"></label>
+        <label>Max. Ladeleistung DC (kW)<input id="cPeak" type="number" step="1" min="20" max="400" inputmode="numeric"></label>
+        <label>Ladezeit 10–80 % (Min.)<input id="cT" type="number" step="1" min="10" max="120" inputmode="numeric"></label>
+      </div>
+      <div class="inline" style="margin-top:10px">
+        <button class="btn small" id="carReset" type="button">Standardwerte</button>
+      </div>
+      <p class="hint" style="margin-top:8px">Die Werte sind Richtwerte für ca. 120 km/h. Sie werden nur für die Reichweite nach dem Laden und die geschätzte Ladezeit gebraucht. Änderungen werden auf diesem Gerät gespeichert.</p>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="h-trip">
+    <h2 id="h-trip">Fahrt</h2>
+    <label>Start
+      <div class="inline">
+        <input id="from" type="text" placeholder="Mein Standort" autocomplete="off">
+        <button class="btn small" id="gps" type="button">Standort</button>
+      </div>
+    </label>
+    <label>Ziel
+      <input id="to" type="text" placeholder="z. B. Hamburg, Jungfernstieg" autocomplete="off">
+    </label>
+    <label>Oder Route aus Google Maps einfügen
+      <div class="inline">
+        <input id="gmaps" type="text" placeholder="Link aus Google Maps" autocomplete="off" inputmode="url">
+        <button class="btn small" id="gmapsClear" type="button">Leeren</button>
+      </div>
+    </label>
+    <p class="hint" id="gmapsHint">Plane die Route in Google Maps, kopier die Adresse aus der Adresszeile und füge sie hier ein. Start, Ziel und Zwischenpunkte werden übernommen.</p>
+    <div class="row3">
+      <label>Reichweite laut Auto (km)<input id="range" type="number" min="10" max="900" step="1" inputmode="numeric" value="250"></label>
+      <label>Ankommen mit mind. (km)<input id="buffer" type="number" min="0" max="150" step="5" inputmode="numeric" value="30"></label>
+      <label>Laden bis (%)<input id="target" type="number" min="50" max="100" step="5" inputmode="numeric" value="80"></label>
+    </div>
+    <div class="checks" role="group" aria-label="Restaurants">
+      <label class="check"><input type="checkbox" id="fMc" checked> McDonald's</label>
+      <label class="check"><input type="checkbox" id="fBk" checked> Burger King</label>
+      <label class="check"><input type="checkbox" id="fDc" checked> nur Schnelllader</label>
+    </div>
+    <div class="row">
+      <label>Fußweg zum Restaurant max.
+        <select id="walk">
+          <option value="150">150 m</option>
+          <option value="300" selected>300 m</option>
+          <option value="500">500 m</option>
+        </select>
+      </label>
+      <label>Umweg von der Route max.
+        <select id="detour">
+          <option value="1500">1,5 km</option>
+          <option value="3000" selected>3 km</option>
+          <option value="5000">5 km</option>
+        </select>
+      </label>
+    </div>
+    <button class="btn primary" id="go" type="button">Ladestopps suchen</button>
+    <div class="status" id="status" hidden></div>
+  </section>
+
+  <div id="results" hidden>
+    <div class="wrap" style="gap:14px">
+      <div class="summary" id="summary"></div>
+      <div id="map" role="img" aria-label="Karte mit Route und Ladestopps"></div>
+      <div id="legs" class="wrap" style="gap:14px"></div>
+    </div>
+  </div>
+
+  <footer>
+    Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende · Route: OSRM. Ladesäulen und Restaurants stammen aus OpenStreetMap und können unvollständig sein. Vor dem Losfahren kurz in der Lade-App prüfen, ob die Säule frei und in Betrieb ist.
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+"use strict";
+/* ---------- Autoprofile (Richtwerte) ---------- */
+const CARS = [
+  {id:"q4-40", name:"Audi Q4 40 e-tron (150 kW)", usable:77, cons:21, peak:135, t:28},
+  {id:"q4-45", name:"Audi Q4 45 e-tron", usable:77, cons:21.5, peak:175, t:28},
+  {id:"id4", name:"VW ID.4 Pro (77 kWh)", usable:77, cons:20.5, peak:135, t:30},
+  {id:"id3", name:"VW ID.3 Pro (58 kWh)", usable:58, cons:17.5, peak:120, t:30},
+  {id:"enyaq", name:"Škoda Enyaq 85", usable:77, cons:20, peak:135, t:28},
+  {id:"my", name:"Tesla Model Y Long Range", usable:75, cons:18.5, peak:250, t:27},
+  {id:"m3", name:"Tesla Model 3 Long Range", usable:75, cons:16.5, peak:250, t:27},
+  {id:"ioniq5", name:"Hyundai Ioniq 5 (77 kWh)", usable:74, cons:20, peak:230, t:18},
+  {id:"ev6", name:"Kia EV6 (77 kWh)", usable:77, cons:19.5, peak:230, t:18},
+  {id:"ix1", name:"BMW iX1", usable:64.7, cons:19.5, peak:130, t:29},
+  {id:"custom", name:"Eigenes Auto", usable:60, cons:19, peak:100, t:35}
+];
+
+/* ---------- Speicher (nur dieses Gerät) ---------- */
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("bls:"+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem("bls:"+k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- Hilfsfunktionen Geometrie ---------- */
+const R_EARTH = 6371000;
+function hav(a, b){ // a,b = [lat,lon] -> Meter
+  const toR = Math.PI/180;
+  const dLat = (b[0]-a[0])*toR, dLon = (b[1]-a[1])*toR;
+  const s = Math.sin(dLat/2)**2 + Math.cos(a[0]*toR)*Math.cos(b[0]*toR)*Math.sin(dLon/2)**2;
+  return 2*R_EARTH*Math.asin(Math.min(1, Math.sqrt(s)));
+}
+function cumulative(coords){ // coords [lat,lon] -> km bis zu jedem Punkt
+  const cum = [0];
+  for(let i=1;i<coords.length;i++) cum.push(cum[i-1] + hav(coords[i-1], coords[i])/1000);
+  return cum;
+}
+function sampleLine(coords, cum, stepKm){
+  const out = [coords[0]]; let next = stepKm;
+  for(let i=1;i<coords.length;i++){ if(cum[i] >= next){ out.push(coords[i]); next = cum[i] + stepKm; } }
+  out.push(coords[coords.length-1]);
+  return out;
+}
+function locateOnRoute(p, coords, cum){ // nächster Routenpunkt -> km entlang Route + Abstand
+  let best = Infinity, idx = 0;
+  // grobe Vorauswahl über jeden 5. Punkt, dann fein um den Treffer
+  for(let i=0;i<coords.length;i+=5){ const d = hav(p, coords[i]); if(d < best){ best = d; idx = i; } }
+  const lo = Math.max(0, idx-6), hi = Math.min(coords.length-1, idx+6);
+  for(let i=lo;i<=hi;i++){ const d = hav(p, coords[i]); if(d < best){ best = d; idx = i; } }
+  return {km: cum[idx], off: best};
+}
+
+/* ---------- OSM-Tags auswerten ---------- */
+function brandOf(tags){
+  const s = ((tags.brand||"")+" "+(tags.name||"")).toLowerCase();
+  const w = tags["brand:wikidata"]||"";
+  if(w==="Q38076" || s.includes("mcdonald")) return "mc";
+  if(w==="Q177054" || s.includes("burger king")) return "bk";
+  return null;
+}
+function parseKW(v){
+  if(!v) return null;
+  let max = null;
+  String(v).split(/[;,]/).forEach(part => {
+    const m = part.match(/([\d.]+)\s*(kw|w)?/i); if(!m) return;
+    let n = parseFloat(m[1]); if(isNaN(n)) return;
+    if(m[2] && m[2].toLowerCase()==="w") n = n/1000;
+    if(n > 1000) n = n/1000; // Angabe in Watt ohne Einheit
+    if(max==null || n>max) max = n;
+  });
+  return max;
+}
+function chargerInfo(tags){
+  let kw = null, hasDC = false, hasAny = false;
+  for(const k in tags){
+    if(!k.startsWith("socket:")) continue;
+    hasAny = true;
+    if(/^socket:(type2_combo|chademo|tesla_supercharger_ccs|ccs)/.test(k)) hasDC = true;
+    if(k.endsWith(":output")){ const n = parseKW(tags[k]); if(n!=null && (kw==null || n>kw)) kw = n; }
+  }
+  ["charging_station:output","maxpower","output"].forEach(k => { const n = parseKW(tags[k]); if(n!=null && (kw==null||n>kw)) kw = n; });
+  if(kw!=null && kw >= 50) hasDC = true;
+  const dc = hasDC ? "dc" : (hasAny ? "ac" : "unknown");
+  return {kw, dc, operator: tags.operator || tags.network || tags.brand || "", points: parseInt(tags.capacity)||null};
+}
+
+/* ---------- Stopps bilden ---------- */
+function buildStops(elements, coords, cum, opt){
+  const ff = [], ch = [];
+  for(const el of elements){
+    const t = el.tags||{}; const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+    if(lat==null) continue;
+    if(t.amenity==="charging_station"){ ch.push({p:[lat,lon], tags:t, info:chargerInfo(t), id:el.type+el.id}); continue; }
+    const b = brandOf(t);
+    if(b && ((b==="mc"&&opt.mc)||(b==="bk"&&opt.bk))) ff.push({p:[lat,lon], tags:t, brand:b, id:el.type+el.id});
+  }
+  const stops = [];
+  for(const f of ff){
+    let best = null;
+    for(const c of ch){
+      if(opt.dcOnly && c.info.dc==="ac") continue;
+      const d = hav(f.p, c.p); if(d > opt.walk) continue;
+      const score = (c.info.dc==="dc"?100000:0) + (c.info.kw||0)*100 - d;
+      if(!best || score > best.score) best = {c, d, score};
+    }
+    if(!best) continue;
+    const loc = locateOnRoute(best.c.p, coords, cum);
+    if(loc.off > opt.detour) continue;
+    stops.push({
+      brand:f.brand, name: f.tags.name || (f.brand==="mc"?"McDonald's":"Burger King"),
+      place: f.tags["addr:city"] || f.tags["addr:place"] || f.tags["addr:suburb"] || "",
+      street: [f.tags["addr:street"], f.tags["addr:housenumber"]].filter(Boolean).join(" "),
+      p: best.c.p, walk: Math.round(best.d), km: loc.km, off: loc.off, charger: best.c.info, id: f.id
+    });
+  }
+  // gleiche Ladesäule nur einmal (z. B. McDonald's als Punkt und Gebäude)
+  const seen = new Set();
+  return stops.sort((a,b)=>a.km-b.km).filter(s => { const k = s.p.join(); if(seen.has(k)) return false; seen.add(k); return true; });
+}
+
+/* ---------- Etappen planen ---------- */
+function chargeMinutes(car, arrPct, targetPct, chargerKW){
+  if(targetPct <= arrPct) return 0;
+  let m = car.t * (targetPct - arrPct) / 70;
+  if(targetPct > 80) m += car.t * (targetPct - Math.max(80, arrPct)) / 70 * 0.8; // oberhalb 80 % langsamer
+  if(chargerKW && chargerKW < car.peak) m *= Math.max(1, car.peak*0.75/chargerKW);
+  return Math.max(5, Math.round(m/5)*5);
+}
+function planLegs(stops, totalKm, car, startRange, buffer, targetPct){
+  const fullRange = car.usable*targetPct/100 / car.cons * 100; // km nach dem Laden
+  const legs = []; let pos = 0, range = startRange, guard = 0;
+  while(guard++ < 30){
+    const reach = pos + range - buffer;
+    if(totalKm <= pos + range - buffer){ legs.push({type:"arrive", from:pos, arriveKm: Math.round(range-(totalKm-pos))}); break; }
+    const cand = stops.filter(s => s.km > pos + 5 && s.km <= reach);
+    if(!cand.length){
+      const nextAny = stops.find(s => s.km > pos + 5);
+      legs.push({type:"gap", from:pos, reach, next:nextAny||null}); break;
+    }
+    const best = cand[cand.length-1];
+    const arrRange = range - (best.km - pos);
+    const arrPct = Math.max(0, Math.round(arrRange * car.cons / 100 / car.usable * 100));
+    legs.push({type:"charge", from:pos, reach, cand, best, arrRange:Math.round(arrRange), arrPct,
+      minutes: chargeMinutes(car, arrPct, targetPct, best.charger.kw)});
+    if(fullRange - buffer < 20){ break; }
+    pos = best.km; range = fullRange;
+  }
+  return {legs, fullRange};
+}
+
+/* ---------- Netzwerk ---------- */
+async function geocode(q){
+  const u = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=de&q=" + encodeURIComponent(q);
+  const r = await fetch(u, {headers:{"Accept":"application/json"}});
+  if(!r.ok) throw new Error("Die Adresssuche antwortet gerade nicht ("+r.status+").");
+  const j = await r.json();
+  if(!j.length) throw new Error("„"+q+"“ wurde nicht gefunden. Versuch es mit Ort und Straße.");
+  return {p:[+j[0].lat, +j[0].lon], label:j[0].display_name};
+}
+/* ---------- Google-Maps-Link auslesen ---------- */
+function parseGmaps(raw){
+  const s = String(raw).trim();
+  if(!s) return null;
+  if(/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(s)) return {short:true};
+  let url; try{ url = new URL(s); }catch(e){ return {error:"Das sieht nicht nach einem Google-Maps-Link aus."}; }
+  const dec = x => decodeURIComponent(String(x).replace(/\+/g," ")).trim();
+  const asCoord = x => { const m = String(x).match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/); return m ? [+m[1], +m[2]] : null; };
+  const toPt = x => { const c = asCoord(x); return c ? {p:c, label:c.map(n=>n.toFixed(4)).join(", ")} : {q:x}; };
+  // Variante 1: ?api=1&origin=..&destination=..&waypoints=a|b
+  const sp = url.searchParams;
+  if(sp.get("destination")){
+    const pts = [];
+    if(sp.get("origin")) pts.push(toPt(sp.get("origin"))); else pts.push({gps:true});
+    (sp.get("waypoints")||"").split("|").filter(Boolean).forEach(w => pts.push(toPt(w)));
+    pts.push(toPt(sp.get("destination")));
+    return {points:pts};
+  }
+  // Variante 2: /maps/dir/Start/Ziel/@lat,lng,z/data=...
+  const m = url.pathname.match(/\/dir\/(.*)$/);
+  if(!m) return {error:"Im Link steckt keine Route. Öffne in Google Maps die Route (Start und Ziel) und kopier dann den Link."};
+  const segs = m[1].split("/").filter(x => x && !x.startsWith("@") && !x.startsWith("data="));
+  const names = segs.map(dec);
+  // Koordinaten aus dem data-Teil: !1d<lng>!2d<lat> je Ort und Zwischenpunkt, in Reihenfolge
+  const data = decodeURIComponent(url.pathname + url.search);
+  const pairs = [...data.matchAll(/!1d(-?\d+\.\d+)!2d(-?\d+\.\d+)/g)].map(x => [+x[2], +x[1]]);
+  let pts;
+  const originEmpty = m[1].startsWith("/"); // /dir//Ziel = Start ist „Mein Standort“
+  if(originEmpty && pairs.length >= 1){
+    pts = [{gps:true}].concat(pairs.map((c,i) => ({p:c, label: i===pairs.length-1 && names.length ? names[names.length-1] : "Zwischenpunkt"})));
+  } else if(pairs.length >= 2){
+    pts = pairs.map((c,i) => ({p:c, label: (i===0 && names[0]) ? names[0] : (i===pairs.length-1 && names.length) ? names[names.length-1] : "Zwischenpunkt"}));
+    if(pairs.length > names.length){ pts.forEach((pt,i) => { if(i>0 && i<pts.length-1) pt.via = true; }); }
+  } else {
+    pts = names.map(n => /mein standort|my location|your location/i.test(n) ? {gps:true} : toPt(n));
+    if(pts.length === 1) pts.unshift({gps:true});
+  }
+  if(pts.length < 2) return {error:"Im Link wurden nicht Start und Ziel gefunden."};
+  return {points:pts};
+}
+
+async function route(a, b, via){
+  const all = [a].concat(via||[], [b]);
+  const u = `https://router.project-osrm.org/route/v1/driving/${all.map(p=>p[1]+","+p[0]).join(";")}?overview=full&geometries=geojson`;
+  const r = await fetch(u);
+  if(!r.ok) throw new Error("Die Routenberechnung antwortet gerade nicht ("+r.status+"). Bitte gleich nochmal versuchen.");
+  const j = await r.json();
+  if(!j.routes || !j.routes.length) throw new Error("Für diese Strecke wurde keine Route gefunden.");
+  const rt = j.routes[0];
+  return {coords: rt.geometry.coordinates.map(c=>[c[1],c[0]]), km: rt.distance/1000, min: rt.duration/60};
+}
+const OVERPASS = ["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://maps.mail.ru/osm/tools/overpass/api/interpreter"];
+// Ein Abschnitt der Route: zuerst nur Restaurants (schnell), dann Ladesäulen rund um die Treffer
+async function overpassQuery(q){
+  let lastErr;
+  for(const ep of OVERPASS){
+    try{
+      const r = await fetch(ep, {method:"POST", body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+      if(!r.ok){ lastErr = new Error("Status "+r.status); continue; }
+      const j = await r.json();
+      // Overpass meldet Zeitüberschreitung nur versteckt im Feld „remark“, bei leerer Trefferliste
+      if(j.remark && /error|timed out|out of memory/i.test(j.remark)){ lastErr = new Error(j.remark); continue; }
+      return j.elements || [];
+    }catch(e){ lastErr = e; }
+  }
+  throw new Error("Die Kartendaten (Overpass) sind gerade überlastet. Bitte in einer Minute nochmal versuchen. ("+(lastErr&&lastErr.message||"").slice(0,120)+")");
+}
+async function overpass(line, radius, walk, onProgress){
+  // Route in Abschnitte von ca. 25 Stützpunkten teilen (≈ 60–100 km), damit keine Abfrage zu groß wird
+  const CH = 25, chunks = [];
+  for(let i=0;i<line.length-1;i+=CH-1) chunks.push(line.slice(i, i+CH));
+  const ffById = new Map();
+  for(let c=0;c<chunks.length;c++){
+    onProgress && onProgress(c+1, chunks.length);
+    const pts = chunks[c].map(p => p[0].toFixed(5)+","+p[1].toFixed(5)).join(",");
+    const q = `[out:json][timeout:60];
+(
+  nwr["amenity"="fast_food"]["brand:wikidata"~"^(Q38076|Q177054)$"](around:${radius},${pts});
+  nwr["amenity"="fast_food"]["brand"~"^(McDonald's|Burger King)$"](around:${radius},${pts});
+  nwr["amenity"="fast_food"]["name"~"^(McDonald|Burger King)"](around:${radius},${pts});
+);
+out center tags;`;
+    (await overpassQuery(q)).forEach(el => ffById.set(el.type+el.id, el));
+  }
+  const ff = [...ffById.values()];
+  if(!ff.length) return {elements:[], ffCount:0, chCount:0};
+  // Ladesäulen nur rund um die gefundenen Restaurants suchen (kleine, schnelle Abfragen)
+  const chById = new Map();
+  for(let i=0;i<ff.length;i+=40){
+    const pts = ff.slice(i,i+40).map(el => { const la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon; return `nwr(around:${walk},${la.toFixed(5)},${lo.toFixed(5)})["amenity"="charging_station"];`; }).join("\n");
+    const q = `[out:json][timeout:60];
+(
+${pts}
+);
+out center tags;`;
+    (await overpassQuery(q)).forEach(el => chById.set(el.type+el.id, el));
+  }
+  return {elements: ff.concat([...chById.values()]), ffCount: ff.length, chCount: chById.size};
+}
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const carSel = $("car");
+let gpsPos = null, map = null, layer = null;
+
+function carValues(id){
+  const base = CARS.find(c=>c.id===id) || CARS[0];
+  const ov = store.get("car:"+id, null);
+  return Object.assign({}, base, ov||{});
+}
+function fillCarFields(){
+  const c = carValues(carSel.value);
+  $("cUsable").value = c.usable; $("cCons").value = c.cons; $("cPeak").value = c.peak; $("cT").value = c.t;
+}
+function readCar(){
+  const base = carValues(carSel.value);
+  const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v) && v>0 ? v : d; };
+  return Object.assign({}, base, {usable:num("cUsable",base.usable), cons:num("cCons",base.cons), peak:num("cPeak",base.peak), t:num("cT",base.t)});
+}
+CARS.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; carSel.appendChild(o); });
+carSel.value = store.get("carId", "q4-40");
+if(!carSel.value) carSel.value = "q4-40";
+fillCarFields();
+carSel.addEventListener("change", () => { store.set("carId", carSel.value); fillCarFields(); if(carSel.value==="custom") $("carDetails").open = true; });
+["cUsable","cCons","cPeak","cT"].forEach(id => $(id).addEventListener("change", () => {
+  const c = readCar(); store.set("car:"+carSel.value, {usable:c.usable, cons:c.cons, peak:c.peak, t:c.t});
+}));
+$("carReset").addEventListener("click", () => { store.set("car:"+carSel.value, null); fillCarFields(); });
+
+// gespeicherte Eingaben
+["to","buffer","target"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).value = v; });
+["fMc","fBk","fDc"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).checked = v; });
+["walk","detour"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).value = v; });
+
+function status(msg, err){ const s = $("status"); s.hidden = !msg; s.textContent = msg||""; s.classList.toggle("err", !!err); }
+
+$("gps").addEventListener("click", getGPS);
+function getGPS(){
+  return new Promise((res, rej) => {
+    if(!navigator.geolocation){ rej(new Error("Dieses Gerät gibt keinen Standort frei. Bitte den Start als Adresse eintragen.")); return; }
+    status("Standort wird bestimmt …");
+    navigator.geolocation.getCurrentPosition(p => {
+      gpsPos = [p.coords.latitude, p.coords.longitude];
+      $("from").value = ""; $("from").placeholder = "Mein Standort ✓";
+      status(""); res(gpsPos);
+    }, e => { const err = new Error("Standort nicht verfügbar. Erlaube den Standortzugriff für diese Seite oder gib den Start als Adresse ein."); status(err.message, true); rej(err); },
+    {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
+  });
+}
+$("gmapsClear").addEventListener("click", () => { $("gmaps").value = ""; $("gmaps").focus(); });
+$("from").addEventListener("input", () => { if($("from").value.trim()) { gpsPos = null; $("from").placeholder = "Mein Standort"; } });
+
+function shortLabel(s){ const parts = String(s).split(",").map(x=>x.trim()).filter(Boolean); return parts.slice(0,3).join(", "); }
+const fmtKm = n => Math.round(n).toLocaleString("de-DE");
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function navLinks(p){
+  const ll = p[0].toFixed(6)+","+p[1].toFixed(6);
+  return `<a href="https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving" target="_blank" rel="noopener">Google Maps</a>
+          <a href="https://maps.apple.com/?daddr=${ll}&dirflg=d" target="_blank" rel="noopener">Apple Karten</a>`;
+}
+function chargerText(c){
+  const kind = c.dc==="dc" ? "Schnelllader" : c.dc==="ac" ? "nur AC (langsam)" : "Typ unbekannt";
+  return [c.operator ? "<b>"+esc(c.operator)+"</b>" : null, c.kw ? Math.round(c.kw)+" kW" : kind, c.points ? c.points+" Ladepunkte" : null].filter(Boolean).join(" · ");
+}
+function stopHTML(s, isBest, leg){
+  const brand = s.brand==="mc" ? '<span class="brand mc">McDonald\'s</span>' : '<span class="brand bk">Burger King</span>';
+  const where = [s.street, s.place].filter(Boolean).join(", ");
+  const extra = isBest && leg ? `<div class="meta">Ankunft mit ca. <b>${leg.arrRange} km</b> (${leg.arrPct} %) · laden bis ${leg.target} %: ca. <b>${leg.minutes} Min.</b></div>` : "";
+  return `<div class="stop${isBest?" best":""}">
+    <div class="km">${fmtKm(s.km)}<small>km</small></div>
+    <div class="stop-body">
+      <div class="stop-title">${brand}${isBest?'<span class="tag-best">Empfohlen</span>':""}</div>
+      ${where?`<div class="meta">${esc(where)}</div>`:""}
+      <div class="meta">Lader: ${chargerText(s.charger)} · ${s.walk} m zu Fuß · ${(s.off/1000).toLocaleString("de-DE",{maximumFractionDigits:1})} km von der Route</div>
+      ${extra}
+      <div class="links">${navLinks(s.p)}</div>
+    </div></div>`;
+}
+
+function tripUrl(rt, charges, opt){
+  const ll = p => p[0].toFixed(6)+","+p[1].toFixed(6);
+  const cum = cumulative(rt.coords);
+  // Zwischenpunkte aus Google Maps und Ladestopps in Fahrtreihenfolge
+  const wps = (opt.via||[]).map(p => ({km: locateOnRoute(p, rt.coords, cum).km, p}))
+    .concat(charges.map(l => ({km:l.best.km, p:l.best.p})))
+    .sort((a,b)=>a.km-b.km).slice(0,9);
+  let u = "https://www.google.com/maps/dir/?api=1&travelmode=driving";
+  if(!opt.startGps) u += "&origin=" + ll(opt.startP);
+  u += "&destination=" + ll(opt.destP);
+  if(wps.length) u += "&waypoints=" + encodeURIComponent(wps.map(w=>ll(w.p)).join("|"));
+  return u;
+}
+function renderMap(rt, stops, bestIds){
+  if(!window.L){ $("map").hidden = true; return; }
+  $("map").hidden = false;
+  if(!map){
+    map = L.map("map", {zoomControl:true, attributionControl:true});
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+  }
+  if(layer) layer.remove();
+  layer = L.layerGroup().addTo(map);
+  const css = getComputedStyle(document.documentElement);
+  const sign = css.getPropertyValue("--sign").trim()||"#1b4f8f";
+  const line = L.polyline(rt.coords, {color:sign, weight:5, opacity:.8}).addTo(layer);
+  stops.forEach(s => {
+    const best = bestIds.has(s.id);
+    const col = s.brand==="mc" ? (css.getPropertyValue("--mc").trim()||"#d6a400") : (css.getPropertyValue("--bk").trim()||"#c4511d");
+    L.circleMarker(s.p, {radius: best?10:6, color: best?"#1f7a45":"#ffffff", weight: best?3:1.5, fillColor:col, fillOpacity:1})
+      .bindPopup(`<b>${esc(s.name)}</b><br>km ${fmtKm(s.km)} · ${s.charger.kw?Math.round(s.charger.kw)+" kW":"Lader"}<br>${navLinks(s.p)}`).addTo(layer);
+  });
+  setTimeout(() => { map.invalidateSize(); map.fitBounds(line.getBounds(), {padding:[20,20]}); }, 50);
+}
+
+function render(rt, stops, plan, car, opt){
+  $("results").hidden = false;
+  const charges = plan.legs.filter(l=>l.type==="charge");
+  $("summary").innerHTML = `
+    <span class="pill"><b>${fmtKm(rt.km)} km</b> Strecke</span>
+    <span class="pill">${Math.floor(rt.min/60)} h ${Math.round(rt.min%60)} min Fahrzeit</span>
+    <span class="pill"><b>${charges.length}</b> Ladestopp${charges.length===1?"":"s"}</span>
+    <span class="pill">${stops.length} Treffer an der Route</span>
+    <span class="pill">${opt.ffCount} Restaurants · ${opt.chCount} Ladesäulen in der Nähe</span>
+    <span class="pill" style="border-radius:8px">Von: ${esc(opt.fromLabel)}</span>
+    <span class="pill" style="border-radius:8px">Nach: ${esc(opt.toLabel)}</span>`;
+  const bestIds = new Set(charges.map(l=>l.best.id));
+  renderMap(rt, stops, bestIds);
+
+  let html = ""; let n = 0;
+  for(const leg of plan.legs){
+    if(leg.type==="charge"){
+      n++;
+      leg.target = opt.target;
+      const others = leg.cand.slice(0,-1).reverse().slice(0,4);
+      html += `<div class="leg">
+        <div class="leg-head"><strong>Stopp ${n}</strong><span>bis spätestens km ${fmtKm(leg.reach)}</span></div>
+        ${stopHTML(leg.best, true, leg)}
+        ${others.length?`<div class="leg-note">Früher anhalten geht auch hier:</div>`+others.map(s=>stopHTML(s,false)).join(""):""}
+      </div>`;
+    } else if(leg.type==="arrive"){
+      html += `<div class="leg"><div class="leg-head"><strong>Ziel</strong><span>km ${fmtKm(rt.km)}</span></div>
+        <div class="leg-note">Ankunft mit ca. ${leg.arriveKm} km Restreichweite.</div></div>`;
+    } else {
+      html += `<div class="leg"><div class="leg-head"><strong>Lücke</strong><span>ab km ${fmtKm(leg.from)}</span></div>
+        <div class="leg-note warn">Bis km ${fmtKm(Math.max(leg.from,leg.reach))} gibt es keinen passenden Stopp in Reichweite. ${leg.next?`Der nächste liegt bei km ${fmtKm(leg.next.km)}. Hier also einmal normal laden oder den Fußweg bzw. Umweg oben größer stellen.`:"Danach kommt auch keiner mehr. Lade hier an einer normalen Säule oder stell Fußweg bzw. Umweg größer."}</div>
+        ${leg.next?stopHTML(leg.next,false):""}</div>`;
+    }
+  }
+  if(!stops.length) html = `<div class="leg"><div class="empty">${opt.ffCount
+    ? `Es gibt ${opt.ffCount} Restaurants an der Strecke, aber bei keinem ist in den Kartendaten eine passende Ladesäule in Laufweite eingetragen.${opt.dcOnly?" Probier es ohne „nur Schnelllader“ oder":" Probier es"} mit 500 m Fußweg.`
+    : `Entlang dieser Route wurde kein McDonald's oder Burger King gefunden. Stell den Umweg größer ein.`}</div></div>`;
+  if(charges.length){
+    html = `<div class="leg"><div class="leg-note" style="border:0;display:flex;flex-direction:column;gap:10px">
+      <span>Ganze Fahrt mit ${charges.length===1?"dem empfohlenen Stopp":"den "+charges.length+" empfohlenen Stopps"} an Google Maps übergeben. Google navigiert dann mit Live-Verkehr.</span>
+      <a class="btn primary" style="text-align:center;text-decoration:none" href="${esc(tripUrl(rt, charges, opt))}" target="_blank" rel="noopener">In Google Maps starten</a>
+    </div></div>` + html;
+  }
+  $("legs").innerHTML = html;
+  $("results").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto":"smooth", block:"start"});
+}
+
+$("go").addEventListener("click", async () => {
+  const btn = $("go");
+  const opt = {
+    mc:$("fMc").checked, bk:$("fBk").checked, dcOnly:$("fDc").checked,
+    walk:+$("walk").value, detour:+$("detour").value,
+    range:+$("range").value, buffer:+$("buffer").value||0, target:Math.min(100, Math.max(50, +$("target").value||80))
+  };
+  ["to","buffer","target","walk","detour"].forEach(id => store.set("in:"+id, $(id).value));
+  ["fMc","fBk","fDc"].forEach(id => store.set("in:"+id, $(id).checked));
+  if(!opt.mc && !opt.bk){ status("Wähle mindestens McDonald's oder Burger King aus.", true); return; }
+  const gm = parseGmaps($("gmaps").value);
+  if(gm && gm.short){ status("Das ist ein Kurzlink (maps.app.goo.gl). Öffne ihn einmal im Browser, warte, bis die Route angezeigt wird, und kopier dann die lange Adresse aus der Adresszeile.", true); $("gmaps").focus(); return; }
+  if(gm && gm.error){ status(gm.error, true); $("gmaps").focus(); return; }
+  if(!gm && !$("to").value.trim()){ status("Trag ein Ziel ein oder füge einen Google-Maps-Link ein.", true); $("to").focus(); return; }
+  if(!(opt.range > 0)){ status("Trag die Reichweite ein, die das Auto gerade anzeigt.", true); $("range").focus(); return; }
+  btn.disabled = true;
+  try{
+    let start, dest, via = [];
+    if(gm){
+      status("Google-Maps-Route wird gelesen …");
+      const resolved = [];
+      for(const pt of gm.points){
+        if(pt.gps){ resolved.push({p: gpsPos || await getGPS(), label:"Mein Standort", gps:true}); }
+        else if(pt.p){ resolved.push({p:pt.p, label:pt.label, via:pt.via}); }
+        else { const g = await geocode(pt.q); resolved.push({p:g.p, label:shortLabel(g.label)}); }
+      }
+      start = resolved[0].p; dest = resolved[resolved.length-1].p;
+      via = resolved.slice(1,-1).map(r=>r.p);
+      opt.fromLabel = resolved[0].label; opt.toLabel = resolved[resolved.length-1].label;
+      opt.startGps = !!resolved[0].gps;
+      if(via.length) opt.toLabel += " (über " + via.length + " Zwischenpunkt" + (via.length>1?"e":"") + ")";
+    } else {
+      if($("from").value.trim()){
+        status("Start wird gesucht …");
+        const g = await geocode($("from").value.trim()); start = g.p; opt.fromLabel = shortLabel(g.label);
+      } else { start = gpsPos || await getGPS(); opt.fromLabel = "Mein Standort"; opt.startGps = true; }
+      status("Erkannt: " + opt.fromLabel + " · Ziel wird gesucht …");
+      const gd = await geocode($("to").value.trim());
+      dest = gd.p; opt.toLabel = shortLabel(gd.label);
+    }
+    opt.startP = start; opt.destP = dest; opt.via = via;
+    status("Von " + opt.fromLabel + " nach " + opt.toLabel + " · Route wird berechnet …");
+    const rt = await route(start, dest, via);
+    const cum = cumulative(rt.coords);
+    const line = sampleLine(rt.coords, cum, rt.km > 400 ? 4 : 2.5);
+    status("Restaurants und Ladesäulen an der Strecke werden gesucht … (kann bei langen Strecken 20–40 Sekunden dauern)");
+    const res = await overpass(line, opt.detour, opt.walk, (i,n) => status(`Restaurants an der Strecke werden gesucht … Abschnitt ${i} von ${n}`));
+    status(`${res.ffCount} Restaurants gefunden · Ladesäulen werden geprüft …`);
+    opt.ffCount = res.ffCount; opt.chCount = res.chCount;
+    const stops = buildStops(res.elements, rt.coords, cum, opt);
+    const car = readCar();
+    const plan = planLegs(stops, rt.km, car, opt.range, opt.buffer, opt.target);
+    status("");
+    render(rt, stops, plan, car, opt);
+  }catch(e){
+    const blocked = e instanceof TypeError; // fetch scheitert, bevor ein Server antwortet
+    status(blocked ? "Keine Verbindung zu den Kartendiensten. Läuft die Seite in einer Vorschau (z. B. in der Claude-App)? Dort ist Internetzugriff gesperrt. Öffne sie über ihren Link im normalen Browser." : (e.message || String(e)), true);
+  }
+  finally{ btn.disabled = false; }
+});
+
+// Testzugriff für die Planungslogik
+if(typeof window !== "undefined") window.__bls = {planLegs, buildStops, cumulative, chargeMinutes, parseKW, chargerInfo};
+</script>
+</body>
+</html>
