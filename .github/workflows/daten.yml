@@ -239,7 +239,7 @@ jobs:
                 .map(([s]) => [+s.lat.toFixed(5), +s.lon.toFixed(5), s.kw ? Math.round(s.kw) : 0, s.dc ? 1 : 0, s.op.slice(0, 40), s.pts || 0, s.tesla ? 1 : 0]);
               const t = r.tags;
               out.push([+r.lat.toFixed(5), +r.lon.toFixed(5), r.b, t["addr:city"] || t["addr:place"] || t["addr:suburb"] || "",
-                [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" "), t.opening_hours || "", t["opening_hours:drive_through"] || "", ch]);
+                [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" "), t.opening_hours || "", t["opening_hours:drive_through"] || "", ch, t["addr:postcode"] || ""]);
             }
             return out;
           }
