@@ -16,15 +16,39 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Daten aus OpenStreetMap holen
+      - name: Daten holen (OpenStreetMap und Bundesnetzagentur)
         run: |
           cat > /tmp/build.mjs <<'SKRIPT'
-          // Baut stops.json: alle McDonald's und Burger King plus Ladesäulen im Umkreis von 500 m (Quelle: OpenStreetMap)
-          import { writeFileSync } from "node:fs";
-          const EPS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-          const LAENDER = ["DE", "AT", "CH", "NL", "BE", "LU", "DK"];
+          // Baut stops.json (Format 2): McDonald's und Burger King mit Schnellladern in Laufweite.
+          // Quellen: OpenStreetMap (Restaurants, Öffnungszeiten, Ladesäulen) und Ladesäulenregister der Bundesnetzagentur (Leistung).
+          import { writeFileSync, readFileSync } from "node:fs";
+          import { deflateSync } from "node:zlib";
           const sleep = ms => new Promise(r => setTimeout(r, ms));
-          async function abfrage(q) {
+          const LAENDER = ["DE", "AT", "CH", "NL", "BE", "LU", "DK"];
+          const EPS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+          const UMKREIS = 500; // m, so weit werden Ladesäulen um ein Restaurant gespeichert
+          
+          function hav(aLat, aLon, bLat, bLon) {
+            const t = Math.PI / 180, dLa = (bLat - aLat) * t, dLo = (bLon - aLon) * t;
+            const s = Math.sin(dLa / 2) ** 2 + Math.cos(aLat * t) * Math.cos(bLat * t) * Math.sin(dLo / 2) ** 2;
+            return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(s)));
+          }
+          // Rasterindex für schnelle Umkreissuche (Zellen ca. 1 km)
+          function raster(items) {
+            const g = new Map(), key = (la, lo) => Math.floor(la * 100) + ":" + Math.floor(lo * 100);
+            const add = it => { const k = key(it.lat, it.lon); if (!g.has(k)) g.set(k, []); g.get(k).push(it); };
+            items.forEach(add);
+            const near = (la, lo, m) => {
+              const out = [], a = Math.floor(la * 100), b = Math.floor(lo * 100);
+              for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const it of g.get((a + i) + ":" + (b + j)) || []) { const d = hav(la, lo, it.lat, it.lon); if (d <= m) out.push([it, d]); }
+              return out;
+            };
+            near.add = add;
+            return near;
+          }
+          
+          /* ---------- OpenStreetMap ---------- */
+          async function overpass(q) {
             for (let runde = 0; runde < 4; runde++) {
               for (const ep of EPS) {
                 try {
@@ -39,46 +63,220 @@ jobs:
             }
             throw new Error("Overpass nicht erreichbar");
           }
-          const R_TAGS = ["amenity", "name", "brand", "brand:wikidata", "addr:city", "addr:place", "addr:suburb", "addr:street", "addr:housenumber"];
-          const C_TAGS = ["amenity", "operator", "network", "brand", "capacity", "charging_station:output", "maxpower"];
-          function klein(tags, liste, sockets) {
-            const o = {};
-            for (const k in tags) if (liste.includes(k) || (sockets && k.startsWith("socket:"))) o[k] = tags[k];
-            return o;
-          }
-          const restaurants = new Map(), chargers = new Map();
-          for (const land of LAENDER) {
-            const q = `[out:json][timeout:900][maxsize:1073741824];
+          async function holeOSM() {
+            const restaurants = new Map(), chargers = new Map();
+            for (const land of LAENDER) {
+              const els = await overpass(`[out:json][timeout:900][maxsize:1073741824];
           area["ISO3166-1"="${land}"][admin_level=2]->.a;
           (
             nwr["amenity"="fast_food"]["brand:wikidata"~"^(Q38076|Q177054)$"](area.a);
             nwr["amenity"="fast_food"]["name"~"^(McDonald|Burger King)"](area.a);
           )->.ff;
-          nwr(around.ff:500)["amenity"="charging_station"]->.ch;
+          nwr(around.ff:${UMKREIS})["amenity"="charging_station"]->.ch;
           (.ff;.ch;);
-          out center tags;`;
-            const els = await abfrage(q);
-            let nr = 0, nc = 0;
-            for (const el of els) {
-              const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
-              if (lat == null) continue;
-              const t = el.tags || {}, id = el.type[0] + el.id;
-              const p = { id, lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
-              if (t.amenity === "charging_station") { chargers.set(id, { ...p, tags: klein(t, C_TAGS, true) }); nc++; }
-              else { restaurants.set(id, { ...p, tags: klein(t, R_TAGS, false) }); nr++; }
+          out center tags;`);
+              for (const el of els) {
+                const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+                if (lat == null) continue;
+                const o = { id: el.type[0] + el.id, lat, lon, tags: el.tags || {}, land };
+                (o.tags.amenity === "charging_station" ? chargers : restaurants).set(o.id, o);
+              }
+              console.log(land, "fertig, gesamt:", restaurants.size, "Restaurants,", chargers.size, "Ladesäulen");
+              await sleep(5000);
             }
-            console.log(land, nr, "Restaurants,", nc, "Ladesäulen");
-            await sleep(5000);
+            return { restaurants: [...restaurants.values()], chargers: [...chargers.values()] };
           }
-          if (restaurants.size < 500) { console.log("Zu wenige Restaurants, alte Daten bleiben."); process.exit(1); }
-          writeFileSync("stops.json", JSON.stringify({ updated: new Date().toISOString().slice(0, 10), restaurants: [...restaurants.values()], chargers: [...chargers.values()] }));
-          console.log("Fertig:", restaurants.size, "Restaurants,", chargers.size, "Ladesäulen");
+          
+          /* ---------- Ladesäulenregister der Bundesnetzagentur ---------- */
+          async function holeBNetzA() {
+            try {
+              const seite = await (await fetch("https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/start.html")).text();
+              const m = seite.match(/https?:\/\/data\.bundesnetzagentur\.de\/[^"' ]+Ladesaeulenregister[^"' ]*\.csv/i) || seite.match(/href="([^"]+Ladesaeulenregister[^"]*\.csv)"/i);
+              if (!m) throw new Error("CSV-Link nicht gefunden");
+              let url = m[1] || m[0]; if (url.startsWith("/")) url = "https://www.bundesnetzagentur.de" + url;
+              console.log("Ladesäulenregister:", url);
+              const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+              let text = new TextDecoder("utf-8").decode(buf);
+              if (!/Breitengrad/.test(text)) text = new TextDecoder("latin1").decode(buf);
+              return { rows: leseBNetzA(text), datei: url.split("/").pop() };
+            } catch (e) { console.log("Ladesäulenregister übersprungen:", e.message); return { rows: [], datei: null }; }
+          }
+          function leseBNetzA(text) {
+            const zeilen = text.split(/\r?\n/);
+            const hi = zeilen.findIndex(z => /Breitengrad/.test(z) && /ngengrad/.test(z));
+            if (hi < 0) return [];
+            const sep = (zeilen[hi].match(/;/g) || []).length >= (zeilen[hi].match(/,/g) || []).length ? ";" : ",";
+            const split = z => { const out = []; let cur = "", q = false; for (const ch of z) { if (ch === '"') q = !q; else if (ch === sep && !q) { out.push(cur); cur = ""; } else cur += ch; } out.push(cur); return out.map(s => s.trim()); };
+            const kopf = split(zeilen[hi]);
+            const sp = re => kopf.findIndex(k => re.test(k));
+            const iLat = sp(/Breitengrad/), iLon = sp(/ngengrad/), iKw = sp(/Nennleistung Ladeeinrichtung|Anschlussleistung/), iOp = sp(/Betreiber/), iArt = sp(/Art der Lade/), iPts = sp(/Anzahl Ladepunkte/);
+            const zahl = s => parseFloat(String(s || "").replace(/\./g, (m, o, str) => /,\d/.test(str) ? "" : m).replace(",", "."));
+            const rows = [];
+            for (let i = hi + 1; i < zeilen.length; i++) {
+              if (!zeilen[i]) continue;
+              const c = split(zeilen[i]);
+              const lat = zahl(c[iLat]), lon = zahl(c[iLon]);
+              if (!(lat > 45 && lat < 56 && lon > 5 && lon < 16)) continue;
+              const kw = iKw >= 0 ? zahl(c[iKw]) : NaN;
+              const art = iArt >= 0 ? c[iArt] : "";
+              rows.push({ lat, lon, kw: isFinite(kw) ? kw : null, dc: /schnell/i.test(art) || kw >= 50, op: iOp >= 0 ? c[iOp] : "", pts: iPts >= 0 ? parseInt(c[iPts]) || null : null });
+            }
+            console.log("Ladesäulenregister:", rows.length, "Einträge gelesen");
+            return rows;
+          }
+          
+          /* ---------- Aufbereiten ---------- */
+          function kw(v) {
+            if (!v) return null; let max = null;
+            String(v).split(/[;,]/).forEach(p => { const m = p.match(/([\d.]+)\s*(kw|w)?/i); if (!m) return; let n = parseFloat(m[1]); if (m[2] && m[2].toLowerCase() === "w") n /= 1000; if (n > 1000) n /= 1000; if (max == null || n > max) max = n; });
+            return max;
+          }
+          function ladesaeule(t) {
+            let maxKw = null, dc = false, auto = false, nurRad = false;
+            for (const k in t) {
+              if (!k.startsWith("socket:")) continue;
+              const typ = k.split(":")[1];
+              if (/^(type2_combo|chademo|tesla_supercharger|ccs)/.test(typ)) { dc = true; auto = true; }
+              if (/^(type2|type2_cable|type1)$/.test(typ)) auto = true;
+              if (k.split(":").length === 3 && k.endsWith(":output")) { const n = kw(t[k]); if (n != null && (maxKw == null || n > maxKw)) maxKw = n; }
+            }
+            for (const k of ["charging_station:output", "maxpower", "output"]) { const n = kw(t[k]); if (n != null && (maxKw == null || n > maxKw)) maxKw = n; }
+            if (maxKw >= 50) dc = true;
+            if (t.bicycle === "yes" && t.motorcar !== "yes" && !auto) nurRad = true;
+            if (/bike|fahrrad|e-?bike/i.test((t.operator || "") + " " + (t.name || "")) && !dc) nurRad = true;
+            const name = [t.operator, t.network, t.brand, t.name].filter(Boolean).join(" ");
+            return {
+              lkw: /milence/i.test(name) || t.motorcar === "no",
+              kw: maxKw, dc, nurRad, privat: /^(private|no)$/.test(t.access || ""),
+              nurAC: auto && !dc && (maxKw == null || maxKw < 50),
+              tesla: /tesla/i.test(name) || Object.keys(t).some(k => k.startsWith("socket:tesla_supercharger")),
+              op: t.operator || t.network || t.brand || "", pts: parseInt(t.capacity) || null
+            };
+          }
+          function marke(t) {
+            const s = ((t.brand || "") + " " + (t.name || "")).toLowerCase(), w = t["brand:wikidata"] || "";
+            if (w === "Q38076" || s.includes("mcdonald")) return 1;
+            if (w === "Q177054" || s.includes("burger king")) return 2;
+            return 0;
+          }
+          export function aufbereiten(osm, bnetza) {
+            // Ladesäulen aus OSM, ohne E-Bike-, Privat- und reine AC-Säulen
+            let saeulen = osm.chargers.map(c => ({ lat: c.lat, lon: c.lon, ...ladesaeule(c.tags) }))
+              .filter(s => !s.nurRad && !s.privat && !s.nurAC && !s.lkw);
+            // Bundesnetzagentur: Leistung ergänzen und fehlende Schnelllader hinzufügen
+            if (bnetza.length) {
+              const naheOSM = raster(saeulen);
+              let ergaenzt = 0, neu = 0;
+              const schnell = bnetza.filter(b => b.dc && !/milence/i.test(b.op));
+              for (const b of schnell) {
+                const treffer = naheOSM(b.lat, b.lon, 80);
+                if (treffer.length) { for (const [s] of treffer) { if (b.kw && (!s.kw || b.kw > s.kw)) { s.kw = b.kw; ergaenzt++; } s.dc = true; if (!s.op) s.op = b.op; } }
+                else { saeulen.push({ lat: b.lat, lon: b.lon, kw: b.kw, dc: true, tesla: /tesla/i.test(b.op), op: b.op, pts: b.pts, bnetza: true }); neu++; }
+              }
+              console.log("Ladesäulenregister:", ergaenzt, "Leistungen ergänzt,", neu, "Schnelllader neu");
+            }
+            // Ladesäulen am selben Ort (innerhalb 40 m) zusammenfassen
+            saeulen.sort((a, b) => (b.kw || 0) - (a.kw || 0));
+            const zusammen = [], rs = raster([]);
+            for (const s of saeulen) {
+              const t = rs(s.lat, s.lon, 40).find(([o]) => o.tesla === s.tesla);
+              if (t) { const o = t[0]; if (!o.op && s.op) o.op = s.op; if (s.pts) o.pts = Math.max(o.pts || 0, s.pts); continue; }
+              zusammen.push(s); rs.add(s);
+            }
+            const naheS = raster(zusammen);
+            // Restaurants: gleiche Marke innerhalb 150 m nur einmal
+            const rest = osm.restaurants.map(r => ({ ...r, b: marke(r.tags) })).filter(r => r.b)
+              .sort((a, b) => Object.keys(b.tags).length - Object.keys(a.tags).length);
+            const behalten = [], rr = raster([]);
+            for (const r of rest) {
+              if (rr(r.lat, r.lon, 150).some(([o]) => o.b === r.b)) continue;
+              behalten.push(r); rr.add(r);
+            }
+            const out = [];
+            for (const r of behalten) {
+              const ch = naheS(r.lat, r.lon, UMKREIS)
+                .sort((a, b) => ((b[0].kw || 60) - (b[0].tesla ? 200 : 0)) - ((a[0].kw || 60) - (a[0].tesla ? 200 : 0)) || a[1] - b[1])
+                .slice(0, 4)
+                .map(([s]) => [+s.lat.toFixed(5), +s.lon.toFixed(5), s.kw ? Math.round(s.kw) : 0, s.dc ? 1 : 0, s.op.slice(0, 40), s.pts || 0, s.tesla ? 1 : 0]);
+              const t = r.tags;
+              out.push([+r.lat.toFixed(5), +r.lon.toFixed(5), r.b, t["addr:city"] || t["addr:place"] || t["addr:suburb"] || "",
+                [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(" "), t.opening_hours || "", t["opening_hours:drive_through"] || "", ch]);
+            }
+            return out;
+          }
+          
+          /* ---------- App-Dateien für die Installation aufs Handy ---------- */
+          const SW = `const C = "bls-v2";
+          const APP = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+          self.addEventListener("install", e => { e.waitUntil(caches.open(C).then(c => c.addAll(APP)).then(() => self.skipWaiting())); });
+          self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(n => n !== C).map(n => caches.delete(n)))).then(() => self.clients.claim())); });
+          self.addEventListener("fetch", e => {
+            const u = new URL(e.request.url);
+            if (e.request.method !== "GET") return;
+            const eigen = u.origin === location.origin;
+            if (eigen && (e.request.mode === "navigate" || u.pathname.endsWith("/index.html") || u.pathname.endsWith("/"))) {
+              e.respondWith(fetch(e.request).then(r => { const k = r.clone(); caches.open(C).then(c => c.put(e.request, k)); return r; }).catch(() => caches.match(e.request).then(r => r || caches.match("index.html"))));
+              return;
+            }
+            if (u.pathname.endsWith("stops.json")) {
+              e.respondWith(caches.open(C).then(c => c.match(e.request, {ignoreSearch: true}).then(alt => {
+                const neu = fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; }).catch(() => alt);
+                return alt || neu;
+              })));
+              return;
+            }
+            if (eigen || /cdnjs\\.cloudflare\\.com|fonts\\.(googleapis|gstatic)\\.com/.test(u.host)) {
+              e.respondWith(caches.match(e.request).then(alt => alt || fetch(e.request).then(r => { const k = r.clone(); caches.open(C).then(c => c.put(e.request, k)); return r; })));
+            }
+          });`;
+          const MANIFEST = { name: "Burger-Ladestopp", short_name: "Ladestopp", start_url: "./", scope: "./", display: "standalone", background_color: "#0f141b", theme_color: "#1b4f8f", lang: "de",
+            icons: [{ src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" }, { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }] };
+          
+          
+          /* ---------- App-Symbol als PNG zeichnen (blaue Fläche, weißer Blitz, gelber Punkt) ---------- */
+          function icon(n) {
+            const px = Buffer.alloc(n * n * 3), poly = [[13, 2], [5, 13], [11, 13], [10, 22], [18, 10], [12, 10]];
+            const sc = n * 0.56 / 24, off = (n - 24 * sc) / 2, P = poly.map(([x, y]) => [off + x * sc, off + y * sc]);
+            const inPoly = (x, y) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+            const r = n * 0.075, cx = n * 0.7, cy = n * 0.7;
+            for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+              let hits = [0, 0]; // 4x4-Kantenglättung
+              for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) { const sx = x + (a + .5) / 4, sy = y + (b + .5) / 4; if (inPoly(sx, sy)) hits[0]++; else if ((sx - cx) ** 2 + (sy - cy) ** 2 <= r * r) hits[1]++; }
+              const w = hits[0] / 16, g = hits[1] / 16, bg = 1 - w - g, i = (y * n + x) * 3;
+              px[i] = Math.round(27 * bg + 255 * w + 240 * g); px[i + 1] = Math.round(79 * bg + 255 * w + 194 * g); px[i + 2] = Math.round(143 * bg + 255 * w + 46 * g);
+            }
+            const roh = Buffer.alloc((n * 3 + 1) * n);
+            for (let y = 0; y < n; y++) px.copy(roh, y * (n * 3 + 1) + 1, y * n * 3, (y + 1) * n * 3);
+            const crcT = Array.from({ length: 256 }, (_, k) => { let c = k; for (let i = 0; i < 8; i++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+            const crc = b => { let c = 0xffffffff; for (const v of b) c = crcT[(c ^ v) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+            const chunk = (typ, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(typ), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+            const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(n, 0); ihdr.writeUInt32BE(n, 4); ihdr[8] = 8; ihdr[9] = 2;
+            return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(roh)), chunk("IEND", Buffer.alloc(0))]);
+          }
+          
+          /* ---------- Ablauf ---------- */
+          if (process.argv[1] && process.argv[1].endsWith("build.mjs")) {
+            let osm;
+            if (process.env.TEST_V1) {
+              const v1 = JSON.parse(readFileSync(process.env.TEST_V1, "utf8"));
+              osm = { restaurants: v1.restaurants, chargers: v1.chargers };
+            } else osm = await holeOSM();
+            if (osm.restaurants.length < 500) { console.log("Zu wenige Restaurants, alte Daten bleiben."); process.exit(1); }
+            const bn = process.env.TEST_V1 ? { rows: [], datei: null } : await holeBNetzA();
+            const r = aufbereiten(osm, bn.rows);
+            const mitLader = r.filter(x => x[7].length).length;
+            writeFileSync("stops.json", JSON.stringify({ v: 2, updated: new Date().toISOString().slice(0, 10), bnetza: bn.datei, r }));
+            console.log("Fertig:", r.length, "Restaurants, davon", mitLader, "mit Schnelllader in Laufweite");
+            writeFileSync("sw.js", SW);
+            writeFileSync("manifest.webmanifest", JSON.stringify(MANIFEST, null, 1));
+            for (const n of [192, 512]) writeFileSync(`icon-${n}.png`, icon(n));
+          }
           SKRIPT
           node /tmp/build.mjs
       - name: Speichern
         run: |
           git config user.name "Ladestopp-Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add stops.json
+          git add stops.json sw.js manifest.webmanifest icon-192.png icon-512.png
           git diff --cached --quiet || git commit -m "Ladestopp-Daten aktualisiert"
           git push
