@@ -83,6 +83,8 @@ a.cover{position:absolute;inset:0;z-index:0;border-radius:0}
 a.cover:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
 .stop .km,.stop .stop-body{pointer-events:none}
 .stop .links,.stop .links a{pointer-events:auto;position:relative;z-index:1}
+.links .sharebtn{font:inherit;font-size:.9rem;font-weight:600;color:var(--accent);background:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer;position:relative;z-index:1}
+.next-body .links .sharebtn{padding:10px 12px}
 .links a.main{background:var(--sign);color:var(--sign-fg);border-color:var(--sign)}
 .stop:last-child{border-bottom:0}
 .stop.best{background:color-mix(in srgb,var(--sign) 9%,var(--surface))}
@@ -99,6 +101,10 @@ a.cover:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
 .links{display:flex;gap:8px;flex-wrap:wrap}
 .links a{font-size:.9rem;font-weight:600;color:var(--accent);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px}
 .empty{text-align:center;color:var(--muted);padding:18px 8px;font-size:.95rem}
+.sugg{list-style:none;margin:-6px 0 0;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);display:flex;flex-direction:column}
+.sugg li{padding:10px 10px;border-radius:6px;cursor:pointer;display:flex;flex-direction:column}
+.sugg li small{color:var(--muted)}
+.sugg li:hover,.sugg li.act{background:var(--chip)}
 .recent{display:flex;flex-wrap:wrap;gap:6px}
 .recent button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:6px 6px 6px 12px;font-size:.88rem;display:flex;align-items:center;gap:6px;cursor:pointer;max-width:100%}
 .recent button span.l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:14em}
@@ -175,6 +181,7 @@ section.card.replan{flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:1
 .tl details > summary .what{color:var(--accent)}
 .tl details[open] > summary{margin-bottom:8px}
 .tl .stop{border:1px solid var(--line);border-radius:10px}
+.warnline{color:var(--warn);font-weight:600}
 .info{font-size:.85rem;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:2px}
 details.mapbox > summary{color:var(--accent);font-weight:600}
 details.mapbox #map{margin-top:10px}
@@ -197,8 +204,9 @@ footer a{color:var(--muted)}
 
   <section class="card" id="form" aria-label="Fahrt planen">
     <label>Wohin?
-      <input id="to" type="text" placeholder="z. B. Ingolstadt oder eine Adresse" autocomplete="off">
+      <input id="to" type="text" placeholder="z. B. Ingolstadt oder eine Adresse" autocomplete="off" role="combobox" aria-autocomplete="list" aria-controls="sugg" aria-expanded="false" enterkeyhint="search">
     </label>
+    <ul class="sugg" id="sugg" role="listbox" hidden></ul>
     <div class="recent" id="recent" aria-label="Feste und zuletzt genutzte Ziele"></div>
     <div class="favform" id="favForm" hidden>
       <label>Name für <span id="favFor"></span>
@@ -228,12 +236,12 @@ footer a{color:var(--muted)}
             <summary>Werte anpassen</summary>
             <div class="row" style="margin-top:10px">
               <label>Nutzbarer Akku (kWh)<input id="cUsable" type="number" step="0.1" min="10" max="200" inputmode="decimal"></label>
-              <label>Verbrauch Autobahn (kWh/100 km)<input id="cCons" type="number" step="0.1" min="8" max="45" inputmode="decimal"></label>
+              <label>Reichweite voll geladen, Autobahn (km)<input id="cCons" type="number" step="5" min="100" max="900" inputmode="numeric"></label>
               <label>Max. Ladeleistung DC (kW)<input id="cPeak" type="number" step="1" min="20" max="400" inputmode="numeric"></label>
               <label>Ladezeit 10–80 % (Min.)<input id="cT" type="number" step="1" min="10" max="120" inputmode="numeric"></label>
             </div>
             <div class="inline" style="margin-top:10px"><button class="btn small" id="carReset" type="button">Standardwerte</button></div>
-            <p class="hint" style="margin-top:8px">Richtwerte für ca. 120 km/h. Sie bestimmen die Reichweite nach dem Laden und die geschätzte Ladezeit.</p>
+            <p class="hint" style="margin-top:8px">Richtwerte für ca. 120 km/h. Die Reichweite bestimmt, wie weit ihr nach dem Laden kommt. Im Winter ruhig kleiner eintragen (z. B. 300 statt 370).</p>
           </details>
         </div>
         <div class="group">
@@ -415,10 +423,12 @@ function buildStops(elements, coords, cum, opt){
 const OH_DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
 function parseOH(str){
   if(!str) return null;
-  str = String(str).trim();
+  // Kommentare („open "Restaurant"“) und das Wort „open“ entfernen
+  str = String(str).replace(/"[^"]*"/g, "").replace(/\bopen\b/g, "").replace(/\s+/g, " ").trim();
   if(/^24\/7$/.test(str)) return {always:true};
   const rules = [];
-  for(let part of str.split(/;|\|\|/)){
+  // Regeln trennen: „;“, „||“ und Kommas direkt nach einer Uhrzeit vor neuem Wochentag („…-01:00, Fr,Sa …“)
+  for(let part of str.split(/;|\|\||(?<=\d),\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)\b)/)){
     part = part.trim(); if(!part) continue;
     const m = part.match(/^((?:(?:Mo|Tu|We|Th|Fr|Sa|Su|PH|SH)(?:-(?:Mo|Tu|We|Th|Fr|Sa|Su))?\s*,?\s*)*)\s*(.*)$/);
     if(!m) return null;
@@ -466,9 +476,16 @@ function ohAt(str, date){
   const next = (today||[]).filter(([a]) => a > min).sort((x,y)=>x[0]-y[0])[0];
   return {open:false, from: next ? fmt(next[0]) : null};
 }
+// „… open "Restaurant" || … open "McDrive"“ in Restaurant- und Drive-Zeiten aufteilen
+function splitOH(str){
+  if(!str || !/\|\|/.test(str) || !/drive/i.test(str)) return {rest: str, drive: ""};
+  const parts = str.split("||");
+  return {rest: parts.filter(p => !/drive/i.test(p)).join(";"), drive: parts.filter(p => /drive/i.test(p)).join(";")};
+}
 function stopOpen(s, date){
-  const r = ohAt(s.oh, date);
-  if(r.open !== true && s.ohDrive){ const d = ohAt(s.ohDrive, date); if(d.open === true) return {open:true, until:d.until, drive:true}; if(r.open === null) return d; }
+  const sp = splitOH(s.oh), ohDrive = s.ohDrive || sp.drive;
+  const r = ohAt(sp.rest, date);
+  if(r.open !== true && ohDrive){ const d = ohAt(ohDrive, date); if(d.open === true) return {open:true, until:d.until, drive:true}; if(r.open === null) return d; }
   return r;
 }
 
@@ -618,7 +635,7 @@ function stopsFromV2(data, coords, cum, line, stepKm, opt){
   const dLa = maxM/111000, dLo = maxM/(111000*Math.cos((la0+la1)/2*Math.PI/180));
   const stops = []; let ffCount = 0, chCount = 0;
   for(const r of data.r){
-    const [lat, lon, b, city, street, oh, ohDrive, chs] = r;
+    const [lat, lon, b, city, street, oh, ohDrive, chs, plz] = r;
     if(lat < la0-dLa || lat > la1+dLa || lon < lo0-dLo || lon > lo1+dLo) continue;
     if((b===1 && !opt.mc) || (b===2 && !opt.bk)) continue;
     const P = [lat, lon];
@@ -637,7 +654,7 @@ function stopsFromV2(data, coords, cum, line, stepKm, opt){
     const [clat, clon, kw, dc, op, pts, tesla] = best.c;
     const loc = locateOnRoute([clat, clon], coords, cum);
     if(loc.off > opt.detour) continue;
-    stops.push({brand: b===1 ? "mc" : "bk", name: b===1 ? "McDonald's" : "Burger King", place: city, street,
+    stops.push({brand: b===1 ? "mc" : "bk", name: b===1 ? "McDonald's" : "Burger King", place: city, street, plz: plz || "",
       p:[clat, clon], walk: Math.round(best.d), km: loc.km, off: loc.off, oh, ohDrive,
       charger:{kw: kw || null, dc: dc ? "dc" : "unknown", operator: op, points: pts || null, tesla: !!tesla},
       id: lat + "," + lon});
@@ -706,12 +723,13 @@ function carValues(id){
 }
 function fillCarFields(){
   const c = carValues(carSel.value);
-  $("cUsable").value = c.usable; $("cCons").value = c.cons; $("cPeak").value = c.peak; $("cT").value = c.t;
+  $("cUsable").value = c.usable; $("cCons").value = Math.round(c.usable / c.cons * 100 / 5) * 5; $("cPeak").value = c.peak; $("cT").value = c.t;
 }
 function readCar(){
   const base = carValues(carSel.value);
   const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v) && v>0 ? v : d; };
-  return Object.assign({}, base, {usable:num("cUsable",base.usable), cons:num("cCons",base.cons), peak:num("cPeak",base.peak), t:num("cT",base.t)});
+  const usable = num("cUsable", base.usable), fullKm = num("cCons", base.usable / base.cons * 100);
+  return Object.assign({}, base, {usable, cons: usable / fullKm * 100, peak:num("cPeak",base.peak), t:num("cT",base.t)});
 }
 CARS.forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.name; carSel.appendChild(o); });
 carSel.value = store.get("carId", "q4-40");
@@ -757,8 +775,8 @@ function addRecent(e){
   store.set("recent", list); renderRecent();
 }
 function useDest(e, name){
-  if(e.gmaps){ $("gmaps").value = e.gmaps; $("to").value = ""; }
-  else { $("to").value = e.to; $("gmaps").value = ""; }
+  if(e.gmaps){ $("gmaps").value = e.gmaps; $("to").value = ""; pickedTo = null; }
+  else { $("to").value = e.to; $("gmaps").value = ""; pickedTo = e.p ? {text: e.to, p: e.p, label: e.label} : null; }
   updateSetSum();
   status("Ziel übernommen: " + (name || e.label) + ". Reichweite prüfen und suchen.");
   $("range").focus(); $("range").select && $("range").select();
@@ -843,6 +861,60 @@ window.addEventListener("appinstalled", () => { $("installBox").hidden = true; }
   $("iosHintOk").addEventListener("click", () => { store.set("iosHintDone", true); box.hidden = true; });
 })();
 $("to").addEventListener("input", () => { if($("gmaps").value){ $("gmaps").value = ""; store.set("in:gmaps", ""); updateSetSum(); } });
+
+/* ---------- Vorschläge beim Tippen (Photon, OpenStreetMap) ---------- */
+let pickedTo = null, suggTimer = null, suggCtl = null, suggItems = [], suggAct = -1;
+function hideSugg(){ $("sugg").hidden = true; $("to").setAttribute("aria-expanded", "false"); suggItems = []; suggAct = -1; }
+function photonLabel(pr){
+  const street = [pr.street, pr.housenumber].filter(Boolean).join(" ");
+  const city = [pr.postcode, pr.city || pr.town || pr.village || pr.county].filter(Boolean).join(" ");
+  const main = pr.name || street || city || "";
+  const sub = [pr.name && street, (pr.name || street) && city, pr.state, pr.country !== "Deutschland" ? pr.country : null].filter(Boolean).join(", ");
+  return {main, sub, full: [main, sub].filter(Boolean).join(", ")};
+}
+function showSugg(list){
+  const ul = $("sugg"); ul.innerHTML = ""; suggItems = list; suggAct = -1;
+  list.forEach((it, i) => {
+    const li = document.createElement("li"); li.setAttribute("role", "option"); li.id = "sg" + i;
+    const b = document.createElement("span"); b.textContent = it.main; const sm = document.createElement("small"); sm.textContent = it.sub;
+    li.append(b, sm);
+    li.addEventListener("mousedown", e => { e.preventDefault(); pickSugg(i); });
+    ul.appendChild(li);
+  });
+  ul.hidden = !list.length; $("to").setAttribute("aria-expanded", String(!!list.length));
+}
+function pickSugg(i){
+  const it = suggItems[i]; if(!it) return;
+  $("to").value = it.full; pickedTo = {text: it.full, p: it.p, label: it.full.split(", ").slice(0, 3).join(", ")};
+  hideSugg(); $("range").focus(); $("range").select && $("range").select();
+}
+$("to").addEventListener("input", () => {
+  pickedTo = null; clearTimeout(suggTimer);
+  const q = $("to").value.trim();
+  if(q.length < 3){ hideSugg(); return; }
+  suggTimer = setTimeout(async () => {
+    try{
+      if(suggCtl) suggCtl.abort(); suggCtl = new AbortController();
+      const bias = gpsPos ? `&lat=${gpsPos[0].toFixed(3)}&lon=${gpsPos[1].toFixed(3)}` : "&lat=51.2&lon=10.4";
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=de&limit=5${bias}`, {signal: suggCtl.signal});
+      if(!r.ok) return;
+      const j = await r.json();
+      if($("to").value.trim() !== q) return;
+      showSugg((j.features || []).map(f => Object.assign(photonLabel(f.properties || {}), {p: [f.geometry.coordinates[1], f.geometry.coordinates[0]]})).filter(x => x.main));
+    }catch(e){ /* ohne Vorschläge weiter */ }
+  }, 300);
+});
+$("to").addEventListener("keydown", e => {
+  if($("sugg").hidden || suggAct < 0 && e.key === "Enter"){ if(e.key === "Enter"){ e.preventDefault(); hideSugg(); runPlan(false); } return; }
+  if(e.key === "ArrowDown" || e.key === "ArrowUp"){
+    e.preventDefault(); suggAct = (suggAct + (e.key === "ArrowDown" ? 1 : -1) + suggItems.length) % suggItems.length;
+    [...$("sugg").children].forEach((li, i) => li.classList.toggle("act", i === suggAct));
+    $("to").setAttribute("aria-activedescendant", "sg" + suggAct);
+  } else if(e.key === "Enter" && suggAct >= 0){ e.preventDefault(); pickSugg(suggAct); }
+  else if(e.key === "Escape") hideSugg();
+});
+$("to").addEventListener("blur", () => setTimeout(hideSugg, 150));
+$("range").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); runPlan(false); } });
 $("from").addEventListener("input", () => { if($("from").value.trim()) { gpsPos = null; $("from").placeholder = "Standort"; } });
 
 function shortLabel(s){ const parts = String(s).split(",").map(x=>x.trim()).filter(Boolean); return parts.slice(0,3).join(", "); }
@@ -855,10 +927,25 @@ function chargerMapUrl(s){
 }
 function navLinks(p, s){
   const ll = p[0].toFixed(6)+","+p[1].toFixed(6);
+  const share = s ? JSON.stringify({t: (s.brand==="mc"?"McDonald's":"Burger King") + (s.place ? " " + s.place : ""),
+    a: [s.street, [s.plz, s.place].filter(Boolean).join(" ")].filter(Boolean).join(", "), ll}) : "";
   return (s ? `<a class="main" href="${esc(chargerMapUrl(s))}" target="_blank" rel="noopener">Säule in Google Maps zeigen</a>` : "") +
          `<a href="https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving" target="_blank" rel="noopener">Route dorthin</a>
-          <a href="https://maps.apple.com/?daddr=${ll}&dirflg=d" target="_blank" rel="noopener">Apple Karten</a>`;
+          <a href="https://maps.apple.com/?daddr=${ll}&dirflg=d" target="_blank" rel="noopener">Apple Karten</a>` +
+         (s ? `<button type="button" class="sharebtn" data-share="${esc(share)}">Adresse teilen</button>` : "");
 }
+// Adresse an andere Apps geben (z. B. myAudi „Ziel ans Fahrzeug senden“, WhatsApp) oder kopieren
+async function shareStop(d){
+  const url = `https://www.google.com/maps/search/?api=1&query=${d.ll}`;
+  const text = d.t + (d.a ? "\n" + d.a : "");
+  if(navigator.share){ try{ await navigator.share({title: d.t, text, url}); return; }catch(e){ if(e && e.name === "AbortError") return; } }
+  try{ await navigator.clipboard.writeText(text + "\n" + url); status("Adresse kopiert: " + (d.a || d.t)); }
+  catch(e){ status("Adresse: " + (d.a || d.t) + " · " + d.ll); }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest(".sharebtn");
+  if(b){ e.preventDefault(); try{ shareStop(JSON.parse(b.dataset.share)); }catch(err){} }
+});
 function chargerText(c){
   const kind = c.dc==="dc" ? "Schnelllader" : c.dc==="ac" ? "nur AC (langsam)" : "Typ unbekannt";
   return [c.operator ? "<b>"+esc(c.operator)+"</b>" : null, c.kw ? Math.round(c.kw)+" kW" : kind, c.points ? c.points+" Ladepunkte" : null].filter(Boolean).join(" · ");
@@ -949,7 +1036,7 @@ function render(rt, stops, plan, car, opt){
           <div class="fact"><b>${s.charger.kw ? Math.round(s.charger.kw) + " kW" : "?"}</b><small>${esc((s.charger.operator||"Ladesäule").slice(0,22))}</small></div>
           <div class="fact"><b>${first.minutes} Min.</b><small>laden bis ${opt.target} %</small></div>
         </div>
-        <div class="meta">${s.walk} m zu Fuß zum Restaurant${s.charger.points ? " · " + s.charger.points + " Ladepunkte" : ""}</div>
+        <div class="meta">${s.walk} m zu Fuß zum Restaurant${s.charger.points ? " · " + s.charger.points + " Ladepunkte" : ""} · danach ca. ${fmtKm(plan.fullRange)} km Reichweite</div>
         <div class="links">${navLinks(s.p, s)}</div>
         <p class="hint">In Google Maps neben der Stecknadel auf das Ladesäulen-Symbol tippen, dann siehst du die freien Plätze.</p>
       </div>
@@ -992,7 +1079,8 @@ function render(rt, stops, plan, car, opt){
 
   // 4) Kleingedrucktes
   html += `<div class="info"><span>${fmtKm(rt.km)} km · ${Math.floor(rt.min/60)} h ${Math.round(rt.min%60)} min reine Fahrzeit · ${stops.length} passende Stopps an der Strecke</span>
-    <span>Geplant ${new Date().toLocaleString("de-DE",{weekday:"short", hour:"2-digit", minute:"2-digit"})} · ${opt.dataDate ? "Daten vom " + new Date(opt.dataDate).toLocaleDateString("de-DE") : "Live-Daten"} · ${esc(opt.carName)}</span></div>`;
+    <span>Geplant ${new Date().toLocaleString("de-DE",{weekday:"short", hour:"2-digit", minute:"2-digit"})} · ${opt.dataDate ? "Daten vom " + new Date(opt.dataDate).toLocaleDateString("de-DE") : "Live-Daten"} · ${esc(opt.carName)}</span>
+    ${opt.dataDate && (Date.now() - new Date(opt.dataDate)) > 21*86400000 ? `<span class="warnline">Die Restaurant-Liste ist ${Math.round((Date.now() - new Date(opt.dataDate))/86400000)} Tage alt. Die wöchentliche Aktualisierung auf GitHub läuft offenbar nicht (dort unter „Actions“ nachsehen).</span>` : ""}</div>`;
 
   // Karte vorbereiten
   const bestIds = new Set(charges.map(l => l.best.id));
@@ -1089,7 +1177,7 @@ async function runPlan(replan){
         const g = await geocode($("from").value.trim()); start = g.p; opt.fromLabel = shortLabel(g.label);
       } else { start = (replan ? null : gpsPos) || await getGPS(); opt.fromLabel = "Mein Standort"; opt.startGps = true; }
       status("Erkannt: " + opt.fromLabel + " · Ziel wird gesucht …");
-      const gd = await geocode($("to").value.trim());
+      const gd = (pickedTo && pickedTo.text === $("to").value) ? {p: pickedTo.p, label: pickedTo.label} : await geocode($("to").value.trim());
       dest = gd.p; opt.toLabel = shortLabel(gd.label);
     }
     opt.startP = start; opt.destP = dest; opt.via = via;
@@ -1109,7 +1197,7 @@ async function runPlan(replan){
     const stops = res.stops || buildStops(res.elements, rt.coords, cum, opt);
     const car = readCar();
     const plan = planLegs(stops, rt.km, car, opt.range, opt.buffer, opt.target, {start: opt.start, kmPerMin: rt.km / Math.max(1, rt.min)});
-    addRecent(gm ? {gmaps: $("gmaps").value.trim(), label: opt.toLabel} : {to: $("to").value.trim(), label: opt.toLabel});
+    addRecent(gm ? {gmaps: $("gmaps").value.trim(), label: opt.toLabel} : {to: $("to").value.trim(), label: opt.toLabel, p: opt.destP});
     status("");
     $("results").classList.remove("stale");
     render(rt, stops, plan, car, opt);
