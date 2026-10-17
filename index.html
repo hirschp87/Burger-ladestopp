@@ -106,6 +106,67 @@ a.cover:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
 .oh.open{color:var(--ok)} .oh.closed{color:var(--warn)} .oh.unknown{color:var(--muted);font-weight:500}
 .tag-tesla{font:700 .72rem var(--display);letter-spacing:.05em;text-transform:uppercase;color:var(--warn);border:1.5px solid var(--warn);border-radius:4px;padding:1px 6px}
 .install{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.unit{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.unit input{border:0!important;background:transparent!important;font:600 1.25rem var(--display)!important;padding:8px 4px 8px 12px!important;min-width:0}
+.unit span{padding-right:12px;color:var(--muted);font-weight:600}
+.unit:focus-within{outline:3px solid var(--accent);outline-offset:2px}
+.unit input:focus-visible{outline:none}
+#form > .row label{color:var(--fg);font-weight:600;font-size:.9rem}
+details.settings{border-top:1px solid var(--line);padding-top:10px}
+details.settings > summary{list-style:none;display:flex;flex-direction:column;gap:2px;color:var(--fg)}
+details.settings > summary::-webkit-details-marker{display:none}
+details.settings > summary .s-title{color:var(--accent);font-weight:600}
+details.settings > summary .s-title::before{content:"▸ ";display:inline-block;width:1em}
+details.settings[open] > summary .s-title::before{content:"▾ "}
+.s-sum{font-size:.85rem;color:var(--muted);font-weight:400}
+.settings-body{display:flex;flex-direction:column;gap:16px;margin-top:12px}
+.group{display:flex;flex-direction:column;gap:10px}
+h3{font:600 .95rem/1.2 var(--display);text-transform:uppercase;letter-spacing:.06em;margin:0;color:var(--muted)}
+.results{display:flex;flex-direction:column;gap:14px}
+/* Nächster Stopp */
+.next{border-radius:14px;overflow:hidden;border:2px solid var(--sign);background:var(--surface)}
+.next-head{background:var(--sign);color:var(--sign-fg);padding:10px 16px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
+.next-head strong{font:700 1.05rem var(--display);letter-spacing:.08em;text-transform:uppercase}
+.next-head span{font:600 1.05rem var(--display);font-variant-numeric:tabular-nums}
+.next-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.next-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.next-title .place{font:700 1.5rem/1.15 var(--display);text-wrap:balance}
+.next-body .links{margin-top:4px}
+.next-body .links a{padding:10px 12px}
+.big-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-block:4px}
+.fact{background:var(--chip);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;min-width:0}
+.fact b{font:700 1.2rem/1.1 var(--display);font-variant-numeric:tabular-nums}
+.fact small{font-size:.75rem;color:var(--muted)}
+details.alts{border-top:1px solid var(--line)}
+details.alts > summary{padding:12px 16px;color:var(--accent);font-weight:600;font-size:.92rem}
+.note{padding:12px 16px;font-size:.95rem}
+.note.warn{color:var(--warn)}
+/* Unterwegs neu planen */
+section.card.replan{flex-direction:row;flex-wrap:wrap;align-items:flex-end;gap:10px}
+.replan label{flex:1 1 8em}
+.replan .btn.primary{flex:2 1 12em;width:auto;padding:12px 14px;font-size:1.05rem}
+/* Zeitleiste */
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl li{position:relative;padding:0 0 14px 28px}
+.tl li:last-child{padding-bottom:0}
+.tl li::before{content:"";position:absolute;left:8px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:3px solid var(--sign)}
+.tl li::after{content:"";position:absolute;left:13px;top:20px;bottom:-4px;width:2px;background:var(--line)}
+.tl li:last-child::after{display:none}
+.tl li.stop-li::before{background:var(--mc);border-color:var(--mc)}
+.tl li.stop-li.bk::before{background:var(--bk);border-color:var(--bk)}
+.tl li.gap-li::before{border-color:var(--warn)}
+.tl-row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.tl-row time{font:700 1.05rem var(--display);font-variant-numeric:tabular-nums;min-width:3.2em}
+.tl-row .what{font-weight:600}
+.tl-row small{color:var(--muted);font-size:.85rem;flex-basis:100%;padding-left:calc(3.2em + 10px)}
+.tl details > summary{list-style:none;cursor:pointer}
+.tl details > summary::-webkit-details-marker{display:none}
+.tl details > summary .what{color:var(--accent)}
+.tl details[open] > summary{margin-bottom:8px}
+.tl .stop{border:1px solid var(--line);border-radius:10px}
+.info{font-size:.85rem;color:var(--muted);text-align:center;display:flex;flex-direction:column;gap:2px}
+details.mapbox > summary{color:var(--accent);font-weight:600}
+details.mapbox #map{margin-top:10px}
 footer{font-size:.8rem;color:var(--muted);text-align:center}
 footer a{color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -123,87 +184,80 @@ footer a{color:var(--muted)}
     </div>
   </header>
 
-  <section class="card" aria-labelledby="h-car">
-    <h2 id="h-car">Auto</h2>
-    <label>Modell
-      <select id="car"></select>
+  <section class="card" id="form" aria-label="Fahrt planen">
+    <label>Wohin?
+      <input id="to" type="text" placeholder="z. B. Ingolstadt oder eine Adresse" autocomplete="off">
     </label>
-    <details class="car" id="carDetails">
-      <summary>Werte anpassen</summary>
-      <div class="row" style="margin-top:10px">
-        <label>Nutzbarer Akku (kWh)<input id="cUsable" type="number" step="0.1" min="10" max="200" inputmode="decimal"></label>
-        <label>Verbrauch Autobahn (kWh/100 km)<input id="cCons" type="number" step="0.1" min="8" max="45" inputmode="decimal"></label>
-        <label>Max. Ladeleistung DC (kW)<input id="cPeak" type="number" step="1" min="20" max="400" inputmode="numeric"></label>
-        <label>Ladezeit 10–80 % (Min.)<input id="cT" type="number" step="1" min="10" max="120" inputmode="numeric"></label>
+    <div class="recent" id="recent" aria-label="Zuletzt genutzte Ziele"></div>
+    <p class="hint" id="gmapsActive" hidden></p>
+    <div class="row">
+      <label>Reichweite laut Auto
+        <span class="unit"><input id="range" type="number" min="10" max="900" step="1" inputmode="numeric" value="250"><span>km</span></span>
+      </label>
+      <label>Start
+        <span class="inline"><input id="from" type="text" placeholder="Mein Standort" autocomplete="off"><button class="btn small" id="gps" type="button" aria-label="Standort bestimmen">GPS</button></span>
+      </label>
+    </div>
+    <button class="btn primary" id="go" type="button">Nächsten Ladestopp finden</button>
+    <div class="status" id="status" hidden></div>
+
+    <details class="settings" id="settings">
+      <summary><span class="s-title">Einstellungen</span><span class="s-sum" id="setSum"></span></summary>
+      <div class="settings-body">
+        <div class="group">
+          <h3>Auto</h3>
+          <label>Modell<select id="car"></select></label>
+          <details class="car" id="carDetails">
+            <summary>Werte anpassen</summary>
+            <div class="row" style="margin-top:10px">
+              <label>Nutzbarer Akku (kWh)<input id="cUsable" type="number" step="0.1" min="10" max="200" inputmode="decimal"></label>
+              <label>Verbrauch Autobahn (kWh/100 km)<input id="cCons" type="number" step="0.1" min="8" max="45" inputmode="decimal"></label>
+              <label>Max. Ladeleistung DC (kW)<input id="cPeak" type="number" step="1" min="20" max="400" inputmode="numeric"></label>
+              <label>Ladezeit 10–80 % (Min.)<input id="cT" type="number" step="1" min="10" max="120" inputmode="numeric"></label>
+            </div>
+            <div class="inline" style="margin-top:10px"><button class="btn small" id="carReset" type="button">Standardwerte</button></div>
+            <p class="hint" style="margin-top:8px">Richtwerte für ca. 120 km/h. Sie bestimmen die Reichweite nach dem Laden und die geschätzte Ladezeit.</p>
+          </details>
+        </div>
+        <div class="group">
+          <h3>Laden</h3>
+          <div class="row">
+            <label>Ankommen mit mind.<span class="unit"><input id="buffer" type="number" min="0" max="150" step="5" inputmode="numeric" value="30"><span>km</span></span></label>
+            <label>Laden bis<span class="unit"><input id="target" type="number" min="50" max="100" step="5" inputmode="numeric" value="80"><span>%</span></span></label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Restaurants und Säulen</h3>
+          <div class="checks" role="group" aria-label="Restaurants und Säulen">
+            <label class="check"><input type="checkbox" id="fMc" checked> McDonald's</label>
+            <label class="check"><input type="checkbox" id="fBk" checked> Burger King</label>
+            <label class="check"><input type="checkbox" id="fDc" checked> nur Schnelllader</label>
+            <label class="check"><input type="checkbox" id="fTesla" checked> Tesla-Supercharger</label>
+          </div>
+          <div class="row">
+            <label>Fußweg zum Restaurant max.
+              <select id="walk"><option value="150">150 m</option><option value="300" selected>300 m</option><option value="500">500 m</option></select>
+            </label>
+            <label>Umweg von der Route max.
+              <select id="detour"><option value="1500">1,5 km</option><option value="3000" selected>3 km</option><option value="5000">5 km</option></select>
+            </label>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Für später planen</h3>
+          <label>Abfahrt<input id="depart" type="datetime-local"></label>
+          <p class="hint">Leer heißt: jetzt. Damit prüft die App, ob das Restaurant bei Ankunft geöffnet hat.</p>
+        </div>
+        <div class="group">
+          <h3>Route aus Google Maps</h3>
+          <span class="inline"><input id="gmaps" type="text" placeholder="Link aus Google Maps" autocomplete="off" inputmode="url"><button class="btn small" id="gmapsClear" type="button">Leeren</button></span>
+          <p class="hint">Route in Google Maps planen, die lange Adresse aus der Adresszeile kopieren und hier einfügen. Start, Ziel und Zwischenpunkte werden übernommen.</p>
+        </div>
       </div>
-      <div class="inline" style="margin-top:10px">
-        <button class="btn small" id="carReset" type="button">Standardwerte</button>
-      </div>
-      <p class="hint" style="margin-top:8px">Die Werte sind Richtwerte für ca. 120 km/h. Sie werden nur für die Reichweite nach dem Laden und die geschätzte Ladezeit gebraucht. Änderungen werden auf diesem Gerät gespeichert.</p>
     </details>
   </section>
 
-  <section class="card" aria-labelledby="h-trip">
-    <h2 id="h-trip">Fahrt</h2>
-    <label>Start
-      <div class="inline">
-        <input id="from" type="text" placeholder="Mein Standort" autocomplete="off">
-        <button class="btn small" id="gps" type="button">Standort</button>
-      </div>
-    </label>
-    <label>Ziel
-      <input id="to" type="text" placeholder="z. B. Hamburg, Jungfernstieg" autocomplete="off">
-    </label>
-    <div class="recent" id="recent" aria-label="Zuletzt genutzte Ziele"></div>
-    <label>Oder Route aus Google Maps einfügen
-      <div class="inline">
-        <input id="gmaps" type="text" placeholder="Link aus Google Maps" autocomplete="off" inputmode="url">
-        <button class="btn small" id="gmapsClear" type="button">Leeren</button>
-      </div>
-    </label>
-    <p class="hint" id="gmapsHint">Plane die Route in Google Maps, kopier die Adresse aus der Adresszeile und füge sie hier ein. Start, Ziel und Zwischenpunkte werden übernommen.</p>
-    <div class="row3">
-      <label>Reichweite laut Auto (km)<input id="range" type="number" min="10" max="900" step="1" inputmode="numeric" value="250"></label>
-      <label>Ankommen mit mind. (km)<input id="buffer" type="number" min="0" max="150" step="5" inputmode="numeric" value="30"></label>
-      <label>Laden bis (%)<input id="target" type="number" min="50" max="100" step="5" inputmode="numeric" value="80"></label>
-    </div>
-    <label>Abfahrt
-      <input id="depart" type="datetime-local">
-    </label>
-    <p class="hint">Leer lassen heißt: jetzt. Mit der Abfahrtszeit prüft die App, ob das Restaurant bei Ankunft geöffnet hat.</p>
-    <div class="checks" role="group" aria-label="Restaurants">
-      <label class="check"><input type="checkbox" id="fMc" checked> McDonald's</label>
-      <label class="check"><input type="checkbox" id="fBk" checked> Burger King</label>
-      <label class="check"><input type="checkbox" id="fDc" checked> nur Schnelllader</label>
-      <label class="check"><input type="checkbox" id="fTesla" checked> Tesla-Supercharger</label>
-    </div>
-    <div class="row">
-      <label>Fußweg zum Restaurant max.
-        <select id="walk">
-          <option value="150">150 m</option>
-          <option value="300" selected>300 m</option>
-          <option value="500">500 m</option>
-        </select>
-      </label>
-      <label>Umweg von der Route max.
-        <select id="detour">
-          <option value="1500">1,5 km</option>
-          <option value="3000" selected>3 km</option>
-          <option value="5000">5 km</option>
-        </select>
-      </label>
-    </div>
-    <button class="btn primary" id="go" type="button">Ladestopps suchen</button>
-    <div class="status" id="status" hidden></div>
-  </section>
-
-  <div id="results" hidden>
-    <div class="wrap" style="gap:14px">
-      <div class="summary" id="summary"></div>
-      <div id="map" role="img" aria-label="Karte mit Route und Ladestopps"></div>
-      <div id="legs" class="wrap" style="gap:14px"></div>
-    </div>
-  </div>
+  <div id="results" class="results" hidden></div>
 
   <section class="card install" id="installBox" hidden>
     <span>Als App auf dem Handy installieren: schneller Start, auch bei schlechtem Netz.</span>
@@ -211,7 +265,7 @@ footer a{color:var(--muted)}
   </section>
 
   <footer>
-    Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende · Route: OSRM. Restaurants und Öffnungszeiten: OpenStreetMap. Ladesäulen: OpenStreetMap und Ladesäulenregister der Bundesnetzagentur. Die Daten können unvollständig sein. Vor dem Losfahren kurz in der Lade-App prüfen, ob die Säule frei und in Betrieb ist.
+    Kartendaten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende · Route: OSRM. Ladesäulen zusätzlich aus dem Ladesäulenregister der Bundesnetzagentur. Die Daten können unvollständig sein.
   </footer>
 </div>
 
@@ -619,7 +673,7 @@ out center tags;`;
 /* ---------- UI ---------- */
 const $ = id => document.getElementById(id);
 const carSel = $("car");
-let gpsPos = null, map = null, layer = null;
+let gpsPos = null, map = null, layer = null, mapData = null;
 
 function carValues(id){
   const base = CARS.find(c=>c.id===id) || CARS[0];
@@ -646,7 +700,7 @@ carSel.addEventListener("change", () => { store.set("carId", carSel.value); fill
 $("carReset").addEventListener("click", () => { store.set("car:"+carSel.value, null); fillCarFields(); });
 
 // gespeicherte Eingaben
-["to","buffer","target"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).value = v; });
+["to","buffer","target","gmaps"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).value = v; });
 ["fMc","fBk","fDc","fTesla"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).checked = v; });
 ["walk","detour"].forEach(id => { const v = store.get("in:"+id, null); if(v!=null) $(id).value = v; });
 
@@ -696,6 +750,7 @@ function renderRecent(){
 }
 renderRecent();
 loadData(); // Liste schon im Hintergrund laden
+updateSetSum();
 
 /* ---------- Als App installieren (nur auf der veröffentlichten Seite) ---------- */
 if("serviceWorker" in navigator && location.protocol === "https:" && /github\.io$/.test(location.hostname)){
@@ -768,77 +823,143 @@ function tripUrl(rt, charges, opt){
   if(wps.length) u += "&waypoints=" + encodeURIComponent(wps.map(w=>ll(w.p)).join("|"));
   return u;
 }
-function renderMap(rt, stops, bestIds){
-  if(!window.L){ $("map").hidden = true; return; }
-  $("map").hidden = false;
-  if(!map){
-    map = L.map("map", {zoomControl:true, attributionControl:true});
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
-  }
-  if(layer) layer.remove();
-  layer = L.layerGroup().addTo(map);
+/* ---------- Karte (aufklappbar, wird erst beim Öffnen gezeichnet) ---------- */
+function drawMap(){
+  if(!mapData || !window.L || !$("map")) return;
+  if(map){ map.remove(); map = null; }
+  map = L.map("map", {zoomControl:true, attributionControl:true});
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
   const css = getComputedStyle(document.documentElement);
-  const sign = css.getPropertyValue("--sign").trim()||"#1b4f8f";
-  const line = L.polyline(rt.coords, {color:sign, weight:5, opacity:.8}).addTo(layer);
-  stops.forEach(s => {
-    const best = bestIds.has(s.id);
-    const col = s.brand==="mc" ? (css.getPropertyValue("--mc").trim()||"#d6a400") : (css.getPropertyValue("--bk").trim()||"#c4511d");
-    L.circleMarker(s.p, {radius: best?10:6, color: best?"#1f7a45":"#ffffff", weight: best?3:1.5, fillColor:col, fillOpacity:1})
-      .bindPopup(`<b>${esc(s.name)}</b><br>km ${fmtKm(s.km)} · ${s.charger.kw?Math.round(s.charger.kw)+" kW":"Lader"}<br><div class="links" style="margin-top:6px">${navLinks(s.p, s)}</div>`).addTo(layer);
-  });
-  setTimeout(() => { map.invalidateSize(); map.fitBounds(line.getBounds(), {padding:[20,20]}); }, 50);
+  const col = n => css.getPropertyValue(n).trim();
+  const line = L.polyline(mapData.coords, {color: col("--sign") || "#1b4f8f", weight:5, opacity:.8}).addTo(map);
+  for(const m of mapData.markers){
+    L.circleMarker(m.p, {radius: m.best?10:6, color: m.best?"#1f7a45":"#ffffff", weight: m.best?3:1.5, fillColor: col(m.brand==="mc"?"--mc":"--bk"), fillOpacity:1})
+      .bindPopup(m.html).addTo(map);
+  }
+  setTimeout(() => { map.invalidateSize(); map.fitBounds(line.getBounds(), {padding:[20,20]}); }, 60);
+}
+function hookResults(){
+  const mb = document.querySelector("details.mapbox");
+  if(mb) mb.addEventListener("toggle", () => { if(mb.open) drawMap(); });
 }
 
+/* ---------- Ergebnis: nächster Stopp, unterwegs neu planen, Zeitleiste ---------- */
+function compactStop(s, at){
+  return stopHTML(s, false, null, at);
+}
 function render(rt, stops, plan, car, opt){
-  $("results").hidden = false;
-  const charges = plan.legs.filter(l=>l.type==="charge");
-  $("summary").innerHTML = `
-    <span class="pill"><b>${fmtKm(rt.km)} km</b> Strecke</span>
-    <span class="pill">${Math.floor(rt.min/60)} h ${Math.round(rt.min%60)} min Fahrzeit</span>
-    <span class="pill"><b>${charges.length}</b> Ladestopp${charges.length===1?"":"s"}</span>
-    <span class="pill">${stops.length} passende Stopps an der Route</span>
-    ${(() => { const a = plan.legs.find(l => l.type==="arrive"); return a ? `<span class="pill">Ankunft ca. <b>${hhmm(a.at)}</b> inkl. Laden</span>` : ""; })()}
-    <span class="pill">${opt.dataDate ? "Daten vom " + new Date(opt.dataDate).toLocaleDateString("de-DE") : "Live-Daten"}</span>
-    <span class="pill" style="border-radius:8px">Von: ${esc(opt.fromLabel)}</span>
-    <span class="pill" style="border-radius:8px">Nach: ${esc(opt.toLabel)}</span>`;
-  const bestIds = new Set(charges.map(l=>l.best.id));
-  renderMap(rt, stops, bestIds);
+  const legs = plan.legs, charges = legs.filter(l => l.type==="charge");
+  const arrive = legs.find(l => l.type==="arrive"), gap = legs.find(l => l.type==="gap");
+  const first = legs[0];
+  let html = "";
 
-  let html = ""; let n = 0;
-  for(const leg of plan.legs){
-    if(leg.type==="charge"){
-      n++;
-      leg.target = opt.target;
-      const others = leg.cand.filter(s => s !== leg.best).sort((a,b) => b.km - a.km).slice(0,4);
-      html += `<div class="leg">
-        <div class="leg-head"><strong>Stopp ${n}</strong><span>bis spätestens km ${fmtKm(leg.reach)}</span></div>
-        ${stopHTML(leg.best, true, leg, leg.at)}
-        ${others.length?`<div class="leg-note">Alternativen auf dieser Etappe:</div>`+others.map(s=>stopHTML(s,false,null,plan.timeAt(s.km, leg.pauseBefore))).join(""):""}
-      </div>`;
-    } else if(leg.type==="arrive"){
-      html += `<div class="leg"><div class="leg-head"><strong>Ziel</strong><span>km ${fmtKm(rt.km)}</span></div>
-        <div class="leg-note">Ankunft um ca. ${hhmm(leg.at)} mit ca. ${leg.arriveKm} km Restreichweite.</div></div>`;
+  // 1) Nächster Stopp
+  if(first.type === "charge"){
+    const s = first.best, o = stopOpen(s, first.at);
+    const where = [s.street, s.place].filter(Boolean).join(", ");
+    const others = first.cand.filter(x => x !== s).sort((a,b) => b.km - a.km).slice(0,4);
+    html += `<section class="next" aria-label="Nächster Stopp">
+      <div class="next-head"><strong>Nächster Stopp</strong><span>in ${fmtKm(s.km)} km · ca. ${hhmm(first.at)}</span></div>
+      <div class="next-body">
+        <div class="next-title">${s.brand==="mc" ? '<span class="brand mc">McDonald\'s</span>' : '<span class="brand bk">Burger King</span>'}<span class="place">${esc(s.place || s.street || "an der Strecke")}</span>${s.charger.tesla ? '<span class="tag-tesla">Tesla · Freigabe prüfen</span>' : ""}</div>
+        ${where ? `<div class="meta">${esc(where)}</div>` : ""}
+        ${ohHTML(s, first.at)}
+        <div class="big-facts">
+          <div class="fact"><b>${first.arrRange} km</b><small>Rest bei Ankunft</small></div>
+          <div class="fact"><b>${s.charger.kw ? Math.round(s.charger.kw) + " kW" : "?"}</b><small>${esc((s.charger.operator||"Ladesäule").slice(0,22))}</small></div>
+          <div class="fact"><b>${first.minutes} Min.</b><small>laden bis ${opt.target} %</small></div>
+        </div>
+        <div class="meta">${s.walk} m zu Fuß zum Restaurant${s.charger.points ? " · " + s.charger.points + " Ladepunkte" : ""}</div>
+        <div class="links">${navLinks(s.p, s)}</div>
+        <p class="hint">In Google Maps neben der Stecknadel auf das Ladesäulen-Symbol tippen, dann siehst du die freien Plätze.</p>
+      </div>
+      ${others.length ? `<details class="alts"><summary>${others.length} andere Möglichkeit${others.length>1?"en":""} bis km ${fmtKm(first.reach)}</summary>${others.map(x => compactStop(x, plan.timeAt(x.km, 0))).join("")}</details>` : ""}
+    </section>`;
+  } else if(first.type === "arrive"){
+    const soon = stops.filter(x => x.km > 5).slice(0,3);
+    html += `<section class="next"><div class="next-head"><strong>Kein Ladestopp nötig</strong><span>Ankunft ca. ${hhmm(first.at)}</span></div>
+      <div class="note">Ihr kommt mit ca. ${first.arriveKm} km Restreichweite an.${soon.length ? " Falls ihr trotzdem eine Pause machen wollt:" : ""}</div>
+      ${soon.map(x => compactStop(x, plan.timeAt(x.km, 0))).join("")}</section>`;
+  } else {
+    html += `<section class="next"><div class="next-head"><strong>Kein passender Stopp in Reichweite</strong><span>bis km ${fmtKm(Math.max(0, first.reach))}</span></div>
+      <div class="note warn">${first.next ? `Der nächste Burger-Stopp liegt erst bei km ${fmtKm(first.next.km)}. Lade vorher an einer normalen Säule, oder stell in den Einstellungen Fußweg bzw. Umweg größer.` : stops.length ? "Danach kommt keiner mehr." : (opt.ffCount ? `An der Strecke gibt es ${opt.ffCount} Restaurants, aber keins mit passender Ladesäule in Laufweite. Stell in den Einstellungen den Fußweg größer.` : "An dieser Strecke gibt es keinen McDonald's oder Burger King. Stell in den Einstellungen den Umweg größer.")}</div>
+      ${first.next ? compactStop(first.next, plan.timeAt(first.next.km, 0)) : ""}</section>`;
+  }
+
+  // 2) Unterwegs neu planen
+  html += `<section class="card replan" aria-label="Unterwegs neu planen">
+    <label>Reichweite jetzt<span class="unit"><input id="replanRange" type="number" min="10" max="900" inputmode="numeric" placeholder="km"><span>km</span></span></label>
+    <button class="btn primary" id="replanBtn" type="button">Ab hier neu planen</button>
+  </section>`;
+
+  // 3) Ganze Fahrt als Zeitleiste
+  const tl = [`<li><div class="tl-row"><time>${hhmm(opt.start)}</time><span class="what">Start · ${esc(opt.fromLabel)}</span><small>Reichweite ${fmtKm(opt.range)} km</small></div></li>`];
+  for(const l of legs){
+    if(l.type === "charge"){
+      const s = l.best;
+      tl.push(`<li class="stop-li ${s.brand}"><details><summary><div class="tl-row"><time>${hhmm(l.at)}</time><span class="what">${s.brand==="mc"?"McDonald's":"Burger King"} ${esc(s.place||"")}</span><small>km ${fmtKm(s.km)} · ${l.minutes} Min. laden · ${s.charger.kw ? Math.round(s.charger.kw)+" kW" : "Leistung unbekannt"}</small></div></summary>${stopHTML(s, true, Object.assign(l, {target:opt.target}), l.at)}</details></li>`);
+    } else if(l.type === "gap"){
+      tl.push(`<li class="gap-li"><div class="tl-row"><time>–</time><span class="what">Lücke ab km ${fmtKm(l.from)}</span><small>Kein Burger-Stopp in Reichweite${l.next ? ", nächster bei km " + fmtKm(l.next.km) : ""}</small></div></li>`);
     } else {
-      html += `<div class="leg"><div class="leg-head"><strong>Lücke</strong><span>ab km ${fmtKm(leg.from)}</span></div>
-        <div class="leg-note warn">Bis km ${fmtKm(Math.max(leg.from,leg.reach))} gibt es keinen passenden Stopp in Reichweite. ${leg.next?`Der nächste liegt bei km ${fmtKm(leg.next.km)}. Hier also einmal normal laden oder den Fußweg bzw. Umweg oben größer stellen.`:"Danach kommt auch keiner mehr. Lade hier an einer normalen Säule oder stell Fußweg bzw. Umweg größer."}</div>
-        ${leg.next?stopHTML(leg.next,false,null,plan.timeAt(leg.next.km, leg.pauseBefore)):""}</div>`;
+      tl.push(`<li><div class="tl-row"><time>${hhmm(l.at)}</time><span class="what">Ziel · ${esc(opt.toLabel)}</span><small>km ${fmtKm(rt.km)} · ca. ${l.arriveKm} km Rest</small></div></li>`);
     }
   }
-  if(!stops.length) html = `<div class="leg"><div class="empty">${opt.ffCount
-    ? `Es gibt ${opt.ffCount} Restaurants an der Strecke, aber bei keinem ist in den Kartendaten eine passende Ladesäule in Laufweite eingetragen.${opt.dcOnly?" Probier es ohne „nur Schnelllader“ oder":" Probier es"} mit 500 m Fußweg.`
-    : `Entlang dieser Route wurde kein McDonald's oder Burger King gefunden. Stell den Umweg größer ein.`}</div></div>`;
-  if(charges.length){
-    html = `<div class="leg"><div class="leg-note" style="border:0;display:flex;flex-direction:column;gap:10px">
-      <span>Ganze Fahrt mit ${charges.length===1?"dem empfohlenen Stopp":"den "+charges.length+" empfohlenen Stopps"} an Google Maps übergeben. Google navigiert dann mit Live-Verkehr.</span>
-      <a class="btn primary" style="text-align:center;text-decoration:none" href="${esc(tripUrl(rt, charges, opt))}" target="_blank" rel="noopener">In Google Maps starten</a>
-      <span class="hint">Tipp auf einen Stopp: Google Maps zeigt die Stelle der Ladesäule. Dort auf das Ladesäulen-Symbol direkt neben der Stecknadel tippen, dann siehst du die freien Plätze.</span>
-    </div></div>` + html;
-  }
-  $("legs").innerHTML = html;
-  $("results").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto":"smooth", block:"start"});
+  html += `<section class="card"><h2>Ganze Fahrt</h2><ol class="tl">${tl.join("")}</ol>
+    ${charges.length ? `<div class="links"><a href="${esc(tripUrl(rt, charges, opt))}" target="_blank" rel="noopener">Ganze Fahrt in Google Maps</a></div>` : ""}
+    <details class="mapbox"><summary>Karte anzeigen</summary><div id="map" role="img" aria-label="Karte mit Route und Ladestopps"></div></details>
+  </section>`;
+
+  // 4) Kleingedrucktes
+  html += `<div class="info"><span>${fmtKm(rt.km)} km · ${Math.floor(rt.min/60)} h ${Math.round(rt.min%60)} min reine Fahrzeit · ${stops.length} passende Stopps an der Strecke</span>
+    <span>Geplant ${new Date().toLocaleString("de-DE",{weekday:"short", hour:"2-digit", minute:"2-digit"})} · ${opt.dataDate ? "Daten vom " + new Date(opt.dataDate).toLocaleDateString("de-DE") : "Live-Daten"} · ${esc(opt.carName)}</span></div>`;
+
+  // Karte vorbereiten
+  const bestIds = new Set(charges.map(l => l.best.id));
+  const step = Math.max(1, Math.floor(rt.coords.length / 1500));
+  mapData = {coords: rt.coords.filter((_, i) => i % step === 0 || i === rt.coords.length-1).map(p => [+p[0].toFixed(5), +p[1].toFixed(5)]),
+    markers: stops.map(s => ({p:s.p, brand:s.brand, best:bestIds.has(s.id), html:`<b>${esc(s.name)} ${esc(s.place||"")}</b><br>km ${fmtKm(s.km)} · ${s.charger.kw?Math.round(s.charger.kw)+" kW":"Lader"}<div class="links" style="margin-top:6px">${navLinks(s.p, s)}</div>`}))};
+
+  const box = $("results");
+  if(map){ map.remove(); map = null; }
+  box.innerHTML = html; box.hidden = false;
+  hookResults();
+  store.set("last", {html, mapData, ts: Date.now(), query: opt.query});
+  box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto":"smooth", block:"start"});
 }
 
-$("go").addEventListener("click", async () => {
+// letzte Planung wiederherstellen (z. B. nach dem Wechsel zu Google Maps)
+function restoreLast(){
+  const last = store.get("last", null);
+  if(!last || !last.html || Date.now() - last.ts > 24*3600*1000) return;
+  mapData = last.mapData || null;
+  $("results").innerHTML = last.html; $("results").hidden = false;
+  hookResults();
+}
+
+// Einstellungen kurz zusammenfassen
+function updateSetSum(){
+  const c = CARS.find(x => x.id === carSel.value);
+  const parts = [c ? c.name.replace(/\s*\(.*\)$/, "") : "Auto", "laden bis " + ($("target").value||80) + " %", $("walk").value + " m Fußweg"];
+  const brands = [$("fMc").checked && "McD", $("fBk").checked && "BK"].filter(Boolean).join(" + ");
+  if(brands !== "McD + BK") parts.push(brands || "kein Restaurant gewählt");
+  if($("depart").value) parts.push("Abfahrt " + new Date($("depart").value).toLocaleString("de-DE",{weekday:"short", hour:"2-digit", minute:"2-digit"}));
+  $("setSum").textContent = parts.join(" · ");
+  const gm = $("gmaps").value.trim();
+  $("gmapsActive").hidden = !gm;
+  $("gmapsActive").textContent = gm ? "Google-Maps-Route aus den Einstellungen wird verwendet (Ziel-Feld wird ignoriert)." : "";
+}
+["car","target","walk","fMc","fBk","depart","gmaps","detour","fDc","fTesla","buffer"].forEach(id => { $(id).addEventListener("change", updateSetSum); $(id).addEventListener("input", updateSetSum); });
+
+$("go").addEventListener("click", () => runPlan(false));
+$("results").addEventListener("click", e => {
+  if(e.target && e.target.id === "replanBtn"){
+    const v = +$("replanRange").value;
+    if(!(v > 0)){ $("replanRange").focus(); $("replanRange").placeholder = "km eingeben"; return; }
+    $("range").value = v;
+    runPlan(true);
+  }
+});
+async function runPlan(replan){
   const btn = $("go");
   const opt = {
     mc:$("fMc").checked, bk:$("fBk").checked, dcOnly:$("fDc").checked, tesla:$("fTesla").checked,
@@ -846,7 +967,7 @@ $("go").addEventListener("click", async () => {
     walk:+$("walk").value, detour:+$("detour").value,
     range:+$("range").value, buffer:+$("buffer").value||0, target:Math.min(100, Math.max(50, +$("target").value||80))
   };
-  ["to","buffer","target","walk","detour"].forEach(id => store.set("in:"+id, $(id).value));
+  ["to","buffer","target","walk","detour","gmaps"].forEach(id => store.set("in:"+id, $(id).value));
   ["fMc","fBk","fDc","fTesla"].forEach(id => store.set("in:"+id, $(id).checked));
   if(!opt.mc && !opt.bk){ status("Wähle mindestens McDonald's oder Burger King aus.", true); return; }
   const gm = parseGmaps($("gmaps").value);
@@ -854,7 +975,10 @@ $("go").addEventListener("click", async () => {
   if(gm && gm.error){ status(gm.error, true); $("gmaps").focus(); return; }
   if(!gm && !$("to").value.trim()){ status("Trag ein Ziel ein oder füge einen Google-Maps-Link ein.", true); $("to").focus(); return; }
   if(!(opt.range > 0)){ status("Trag die Reichweite ein, die das Auto gerade anzeigt.", true); $("range").focus(); return; }
-  btn.disabled = true;
+  opt.query = gm ? {gmaps: $("gmaps").value.trim()} : {to: $("to").value.trim()};
+  opt.carName = (CARS.find(x => x.id === carSel.value) || {name:"Auto"}).name;
+  if(replan){ $("from").value = ""; gpsPos = null; opt.start = new Date(); window.scrollTo({top:0, behavior:"smooth"}); }
+  btn.disabled = true; const rb = $("replanBtn"); if(rb) rb.disabled = true;
   try{
     let start, dest, via = [];
     if(gm){
@@ -865,6 +989,12 @@ $("go").addEventListener("click", async () => {
         else if(pt.p){ resolved.push({p:pt.p, label:pt.label, via:pt.via}); }
         else { const g = await geocode(pt.q); resolved.push({p:g.p, label:shortLabel(g.label)}); }
       }
+      if(replan){
+        const here = await getGPS(), dest = resolved[resolved.length-1].p, rest = hav(here, dest);
+        // Zwischenpunkte behalten, die näher am Ziel liegen als wir (also noch vor uns)
+        const ahead = resolved.slice(1, -1).filter(r => hav(r.p, dest) < rest - 2000);
+        resolved.splice(0, resolved.length, {p: here, label:"Mein Standort", gps:true}, ...ahead, resolved[resolved.length-1]);
+      }
       start = resolved[0].p; dest = resolved[resolved.length-1].p;
       via = resolved.slice(1,-1).map(r=>r.p);
       opt.fromLabel = resolved[0].label; opt.toLabel = resolved[resolved.length-1].label;
@@ -874,7 +1004,7 @@ $("go").addEventListener("click", async () => {
       if($("from").value.trim()){
         status("Start wird gesucht …");
         const g = await geocode($("from").value.trim()); start = g.p; opt.fromLabel = shortLabel(g.label);
-      } else { start = gpsPos || await getGPS(); opt.fromLabel = "Mein Standort"; opt.startGps = true; }
+      } else { start = (replan ? null : gpsPos) || await getGPS(); opt.fromLabel = "Mein Standort"; opt.startGps = true; }
       status("Erkannt: " + opt.fromLabel + " · Ziel wird gesucht …");
       const gd = await geocode($("to").value.trim());
       dest = gd.p; opt.toLabel = shortLabel(gd.label);
@@ -903,11 +1033,14 @@ $("go").addEventListener("click", async () => {
     const blocked = e instanceof TypeError; // fetch scheitert, bevor ein Server antwortet
     status(blocked ? "Keine Verbindung zu den Kartendiensten. Läuft die Seite in einer Vorschau (z. B. in der Claude-App)? Dort ist Internetzugriff gesperrt. Öffne sie über ihren Link im normalen Browser." : (e.message || String(e)), true);
   }
-  finally{ btn.disabled = false; }
-});
+  finally{ btn.disabled = false; const rb = $("replanBtn"); if(rb) rb.disabled = false; }
+}
 
 // Testzugriff für die Planungslogik
-if(typeof window !== "undefined") window.__bls = {planLegs, buildStops, cumulative, chargeMinutes, parseKW, chargerInfo};
+
+
+// letzte Planung erst anzeigen, wenn alles geladen ist
+try{ restoreLast(); }catch(e){ store.set("last", null); }
 </script>
 </body>
 </html>
