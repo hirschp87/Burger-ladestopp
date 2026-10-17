@@ -21,7 +21,7 @@ jobs:
           cat > /tmp/build.mjs <<'SKRIPT'
           // Baut stops.json (Format 2): McDonald's und Burger King mit Schnellladern in Laufweite.
           // Quellen: OpenStreetMap (Restaurants, Öffnungszeiten, Ladesäulen) und Ladesäulenregister der Bundesnetzagentur (Leistung).
-          import { writeFileSync, readFileSync } from "node:fs";
+          import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
           import { deflateSync } from "node:zlib";
           const sleep = ms => new Promise(r => setTimeout(r, ms));
           const LAENDER = ["DE", "AT", "CH", "NL", "BE", "LU", "DK"];
@@ -48,54 +48,93 @@ jobs:
           }
           
           /* ---------- OpenStreetMap ---------- */
-          async function overpass(q) {
-            for (let runde = 0; runde < 4; runde++) {
-              for (const ep of EPS) {
+          const EPS_ALLE = EPS.concat(["https://maps.mail.ru/osm/tools/overpass/api/interpreter"]);
+          const ENDE = Date.now() + 55 * 60000; // nach 55 Minuten nur noch gespeicherte Daten verwenden
+          async function overpass(q, runden = 3) {
+            for (let runde = 0; runde < runden; runde++) {
+              for (const ep of EPS_ALLE) {
+                if (Date.now() > ENDE) throw new Error("Zeitbudget aufgebraucht");
                 try {
-                  const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "burger-ladestopp-github-action" } });
-                  if (!r.ok) { console.log(ep, r.status); continue; }
+                  const r = await fetch(ep, { method: "POST", signal: AbortSignal.timeout(180000), body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "burger-ladestopp-github-action" } });
+                  if (!r.ok) { console.log("  ", ep, r.status); continue; }
                   const j = await r.json();
-                  if (j.remark && /error|timed out|memory/i.test(j.remark)) { console.log(ep, j.remark); continue; }
+                  if (j.remark && /error|timed out|memory/i.test(j.remark)) { console.log("  ", ep, j.remark.slice(0, 120)); continue; }
                   return j.elements || [];
-                } catch (e) { console.log(ep, e.message); }
+                } catch (e) { console.log("  ", ep, e.message); }
               }
-              await sleep(30000 * (runde + 1));
+              await sleep(20000 * (runde + 1));
             }
             throw new Error("Overpass nicht erreichbar");
           }
-          async function holeOSM() {
+          function einsortieren(els, land, restaurants, chargers) {
+            for (const el of els) {
+              const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+              if (lat == null) continue;
+              const o = { id: el.type[0] + el.id, lat, lon, tags: el.tags || {}, land };
+              (o.tags.amenity === "charging_station" ? chargers : restaurants).set(o.id, o);
+            }
+          }
+          // Ein Land in kleinen Häppchen: erst die Restaurants, dann Ladesäulen rund um je 150 Restaurants
+          async function holeLand(land) {
             const restaurants = new Map(), chargers = new Map();
-            for (const land of LAENDER) {
-              const els = await overpass(`[out:json][timeout:900][maxsize:1073741824];
+            einsortieren(await overpass(`[out:json][timeout:300];
           area["ISO3166-1"="${land}"][admin_level=2]->.a;
           (
             nwr["amenity"="fast_food"]["brand:wikidata"~"^(Q38076|Q177054)$"](area.a);
             nwr["amenity"="fast_food"]["name"~"^(McDonald|Burger King)"](area.a);
-          )->.ff;
-          nwr(around.ff:${UMKREIS})["amenity"="charging_station"]->.ch;
-          (.ff;.ch;);
-          out center tags;`);
-              for (const el of els) {
-                const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
-                if (lat == null) continue;
-                const o = { id: el.type[0] + el.id, lat, lon, tags: el.tags || {}, land };
-                (o.tags.amenity === "charging_station" ? chargers : restaurants).set(o.id, o);
-              }
-              console.log(land, "fertig, gesamt:", restaurants.size, "Restaurants,", chargers.size, "Ladesäulen");
-              await sleep(5000);
+          );
+          out center tags;`), land, restaurants, chargers);
+            const liste = [...restaurants.values()];
+            for (let i = 0; i < liste.length; i += 150) {
+              const teil = liste.slice(i, i + 150).map(r => `  nwr(around:${UMKREIS},${r.lat.toFixed(5)},${r.lon.toFixed(5)})["amenity"="charging_station"];`).join("\n");
+              einsortieren(await overpass(`[out:json][timeout:180];\n(\n${teil}\n);\nout center tags;`), land, restaurants, chargers);
+              await sleep(1500);
             }
+            return { restaurants: [...restaurants.values()], chargers: [...chargers.values()] };
+          }
+          async function holeOSM() {
+            mkdirSync("osm", { recursive: true });
+            // Notreserve für den Umstieg: Rohdaten aus einer stops.json im alten Format
+            let altV1 = null;
+            try { const j = JSON.parse(readFileSync("stops.json", "utf8")); if (j.restaurants) altV1 = j; } catch (e) {}
+            const restaurants = new Map(), chargers = new Map(), status = {};
+            for (const land of LAENDER) {
+              const cache = `osm/${land}.json`;
+              let daten = null;
+              try {
+                daten = await holeLand(land);
+                if (daten.restaurants.length < (land === "DE" ? 1000 : 3)) throw new Error("verdächtig wenige Restaurants: " + daten.restaurants.length);
+                writeFileSync(cache, JSON.stringify(daten));
+                status[land] = "neu";
+              } catch (e) {
+                console.log(land, "nicht abrufbar:", e.message);
+                if (existsSync(cache)) { daten = JSON.parse(readFileSync(cache, "utf8")); status[land] = "vom letzten Mal"; }
+                else status[land] = "fehlt";
+              }
+              if (daten) for (const o of daten.restaurants) restaurants.set(o.id, o);
+              if (daten) for (const o of daten.chargers) chargers.set(o.id, o);
+              console.log(land, status[land] + ", gesamt:", restaurants.size, "Restaurants,", chargers.size, "Ladesäulen");
+              await sleep(3000);
+            }
+            // Länder ohne aktuelle und ohne gespeicherte Daten: aus der alten Liste ergänzen
+            if (altV1 && Object.values(status).includes("fehlt")) {
+              for (const o of altV1.restaurants) if (!restaurants.has(o.id)) restaurants.set(o.id, o);
+              for (const o of altV1.chargers) if (!chargers.has(o.id)) chargers.set(o.id, o);
+              console.log("Fehlende Länder aus der bisherigen Liste ergänzt.");
+            }
+            console.log("Stand je Land:", JSON.stringify(status));
             return { restaurants: [...restaurants.values()], chargers: [...chargers.values()] };
           }
           
           /* ---------- Ladesäulenregister der Bundesnetzagentur ---------- */
           async function holeBNetzA() {
             try {
-              const seite = await (await fetch("https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/start.html")).text();
+              const seite = await (await fetch("https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/start.html", { signal: AbortSignal.timeout(60000) })).text();
               const m = seite.match(/https?:\/\/data\.bundesnetzagentur\.de\/[^"' ]+Ladesaeulenregister[^"' ]*\.csv/i) || seite.match(/href="([^"]+Ladesaeulenregister[^"]*\.csv)"/i);
               if (!m) throw new Error("CSV-Link nicht gefunden");
               let url = m[1] || m[0]; if (url.startsWith("/")) url = "https://www.bundesnetzagentur.de" + url;
               console.log("Ladesäulenregister:", url);
-              const buf = Buffer.from(await (await fetch(url)).arrayBuffer());
+              const buf = Buffer.from(await (await fetch(url, { signal: AbortSignal.timeout(300000) })).arrayBuffer());
               let text = new TextDecoder("utf-8").decode(buf);
               if (!/Breitengrad/.test(text)) text = new TextDecoder("latin1").decode(buf);
               return { rows: leseBNetzA(text), datei: url.split("/").pop() };
@@ -263,6 +302,7 @@ jobs:
             } else osm = await holeOSM();
             if (osm.restaurants.length < 500) { console.log("Zu wenige Restaurants, alte Daten bleiben."); process.exit(1); }
             const bn = process.env.TEST_V1 ? { rows: [], datei: null } : await holeBNetzA();
+            if (!process.env.TEST_V1) console.log("Ladesäulenregister:", bn.datei || "nicht verfügbar, nur OpenStreetMap");
             const r = aufbereiten(osm, bn.rows);
             const mitLader = r.filter(x => x[7].length).length;
             writeFileSync("stops.json", JSON.stringify({ v: 2, updated: new Date().toISOString().slice(0, 10), bnetza: bn.datei, r }));
@@ -277,6 +317,7 @@ jobs:
         run: |
           git config user.name "Ladestopp-Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add stops.json sw.js manifest.webmanifest icon-192.png icon-512.png
+          git add stops.json sw.js manifest.webmanifest icon-192.png icon-512.png osm
           git diff --cached --quiet || git commit -m "Ladestopp-Daten aktualisiert"
+          git pull --rebase --autostash -q || true
           git push
