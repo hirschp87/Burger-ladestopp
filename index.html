@@ -32,6 +32,7 @@
   --sign:#2a64ad; --sign-fg:#ffffff; --accent:#7fb0ee; --mc:#f0c22e; --bk:#ee7a45;
   --ok:#5cc28a; --warn:#e8a54b; --chip:#223042; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--body);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
@@ -101,6 +102,15 @@ a.cover:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
 .recent{display:flex;flex-wrap:wrap;gap:6px}
 .recent button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:6px 6px 6px 12px;font-size:.88rem;display:flex;align-items:center;gap:6px;cursor:pointer;max-width:100%}
 .recent button span.l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:14em}
+.recent button.fav{border-color:var(--sign);font-weight:600;padding-right:12px}
+.recent button.add{border-style:dashed;color:var(--accent);padding-right:12px}
+.favform{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px dashed var(--line);border-radius:10px}
+.favform #favFor{font-weight:600;color:var(--fg)}
+.btn.primary-s{background:var(--sign);color:var(--sign-fg)}
+.favlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.favlist li{display:flex;align-items:center;gap:8px}
+.favlist li > span{flex:1;min-width:0;display:flex;flex-direction:column}
+.favlist li small{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .recent button span.x{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--chip);color:var(--muted);font-size:.8rem}
 .oh{font-size:.9rem;font-weight:600}
 .oh.open{color:var(--ok)} .oh.closed{color:var(--warn)} .oh.unknown{color:var(--muted);font-weight:500}
@@ -122,7 +132,8 @@ details.settings[open] > summary .s-title::before{content:"▾ "}
 .settings-body{display:flex;flex-direction:column;gap:16px;margin-top:12px}
 .group{display:flex;flex-direction:column;gap:10px}
 h3{font:600 .95rem/1.2 var(--display);text-transform:uppercase;letter-spacing:.06em;margin:0;color:var(--muted)}
-.results{display:flex;flex-direction:column;gap:14px}
+.results{display:flex;flex-direction:column;gap:14px;transition:opacity .2s}
+.results.stale{opacity:.4}
 /* Nächster Stopp */
 .next{border-radius:14px;overflow:hidden;border:2px solid var(--sign);background:var(--surface)}
 .next-head{background:var(--sign);color:var(--sign-fg);padding:10px 16px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline}
@@ -188,14 +199,20 @@ footer a{color:var(--muted)}
     <label>Wohin?
       <input id="to" type="text" placeholder="z. B. Ingolstadt oder eine Adresse" autocomplete="off">
     </label>
-    <div class="recent" id="recent" aria-label="Zuletzt genutzte Ziele"></div>
+    <div class="recent" id="recent" aria-label="Feste und zuletzt genutzte Ziele"></div>
+    <div class="favform" id="favForm" hidden>
+      <label>Name für <span id="favFor"></span>
+        <input id="favName" type="text" maxlength="24" placeholder="z. B. Oma" autocomplete="off" enterkeyhint="done">
+      </label>
+      <div class="inline"><button class="btn small primary-s" id="favSave" type="button">Speichern</button><button class="btn small" id="favCancel" type="button">Abbrechen</button></div>
+    </div>
     <p class="hint" id="gmapsActive" hidden></p>
     <div class="row">
       <label>Reichweite laut Auto
         <span class="unit"><input id="range" type="number" min="10" max="900" step="1" inputmode="numeric" value="250"><span>km</span></span>
       </label>
       <label>Start
-        <span class="inline"><input id="from" type="text" placeholder="Mein Standort" autocomplete="off"><button class="btn small" id="gps" type="button" aria-label="Standort bestimmen">GPS</button></span>
+        <span class="inline"><input id="from" type="text" placeholder="Standort" autocomplete="off"><button class="btn small" id="gps" type="button" aria-label="Standort bestimmen">GPS</button></span>
       </label>
     </div>
     <button class="btn primary" id="go" type="button">Nächsten Ladestopp finden</button>
@@ -247,6 +264,11 @@ footer a{color:var(--muted)}
           <h3>Für später planen</h3>
           <label>Abfahrt<input id="depart" type="datetime-local"></label>
           <p class="hint">Leer heißt: jetzt. Damit prüft die App, ob das Restaurant bei Ankunft geöffnet hat.</p>
+        </div>
+        <div class="group">
+          <h3>Feste Ziele</h3>
+          <ul class="favlist" id="favList"></ul>
+          <p class="hint" id="favEmpty">Noch keine. Nach einer Suche erscheint beim Zielfeld „☆ Als festes Ziel speichern“.</p>
         </div>
         <div class="group">
           <h3>Route aus Google Maps</h3>
@@ -470,7 +492,9 @@ function planLegs(stops, totalKm, car, startRange, buffer, targetPct, t){
     const cand = stops.filter(s => s.km > pos + 5 && s.km <= reach);
     if(!cand.length){
       const nextAny = stops.find(s => s.km > pos + 5);
-      legs.push({type:"gap", from:pos, reach, next:nextAny||null, pauseBefore:pauseMin}); break;
+      // ohne Reserve erreichbar? (mind. 5 km Rest)
+      const tight = stops.filter(s => s.km > pos + 2 && s.km <= pos + range - 5).pop() || null;
+      legs.push({type:"gap", from:pos, reach, next:nextAny||null, tight, tightRest: tight ? Math.round(range - (tight.km - pos)) : null, pauseBefore:pauseMin}); break;
     }
     // Auswahl: möglichst spät (weniger Stopps), aber offen und mit gutem Lader
     const score = s => {
@@ -713,7 +737,7 @@ function getGPS(){
     status("Standort wird bestimmt …");
     navigator.geolocation.getCurrentPosition(p => {
       gpsPos = [p.coords.latitude, p.coords.longitude];
-      $("from").value = ""; $("from").placeholder = "Mein Standort ✓";
+      $("from").value = ""; $("from").placeholder = "Standort ✓";
       status(""); res(gpsPos);
     }, e => { const err = new Error("Standort nicht verfügbar. Erlaube den Standortzugriff für diese Seite oder gib den Start als Adresse ein."); status(err.message, true); rej(err); },
     {enableHighAccuracy:true, timeout:15000, maximumAge:60000});
@@ -721,33 +745,76 @@ function getGPS(){
 }
 $("gmapsClear").addEventListener("click", () => { $("gmaps").value = ""; $("gmaps").focus(); });
 
-/* ---------- Zuletzt genutzte Ziele ---------- */
+/* ---------- Feste Ziele und zuletzt genutzte Ziele ---------- */
+const destKey = x => x.gmaps || (x.to||"").trim().toLowerCase();
 function getRecent(){ const r = store.get("recent", []); return Array.isArray(r) ? r : []; }
+function getFavs(){ const r = store.get("favs", []); return Array.isArray(r) ? r : []; }
+let lastDest = store.get("lastDest", null);
 function addRecent(e){
   if(!e.label) return;
-  const key = x => x.gmaps || (x.to||"").toLowerCase();
-  const list = [e].concat(getRecent().filter(x => key(x) !== key(e))).slice(0, 6);
+  lastDest = e; store.set("lastDest", e);
+  const list = [e].concat(getRecent().filter(x => destKey(x) !== destKey(e))).slice(0, 6);
   store.set("recent", list); renderRecent();
+}
+function useDest(e, name){
+  if(e.gmaps){ $("gmaps").value = e.gmaps; $("to").value = ""; }
+  else { $("to").value = e.to; $("gmaps").value = ""; }
+  updateSetSum();
+  status("Ziel übernommen: " + (name || e.label) + ". Reichweite prüfen und suchen.");
+  $("range").focus(); $("range").select && $("range").select();
+}
+function chip(text, onPick, onRemove, cls){
+  const b = document.createElement("button"); b.type = "button"; if(cls) b.className = cls;
+  const l = document.createElement("span"); l.className = "l"; l.textContent = text;
+  b.append(l);
+  if(onRemove){ const x = document.createElement("span"); x.className = "x"; x.textContent = "✕"; x.setAttribute("aria-label", "Entfernen"); b.append(x);
+    b.addEventListener("click", ev => { if(ev.target === x) onRemove(); else onPick(); }); }
+  else b.addEventListener("click", onPick);
+  return b;
 }
 function renderRecent(){
   const box = $("recent"); box.innerHTML = "";
-  getRecent().forEach((e, i) => {
-    const b = document.createElement("button"); b.type = "button";
-    b.title = e.gmaps ? "Google-Maps-Route" : e.to;
-    const l = document.createElement("span"); l.className = "l"; l.textContent = (e.gmaps ? "Route: " : "") + e.label;
-    const x = document.createElement("span"); x.className = "x"; x.textContent = "✕"; x.setAttribute("aria-label", "Entfernen");
-    b.append(l, x);
-    b.addEventListener("click", ev => {
-      if(ev.target === x){ const r = getRecent(); r.splice(i, 1); store.set("recent", r); renderRecent(); return; }
-      if(e.gmaps){ $("gmaps").value = e.gmaps; $("to").value = ""; }
-      else { $("to").value = e.to; $("gmaps").value = ""; }
-      status("Ziel übernommen: " + e.label + ". Reichweite prüfen und suchen.");
-      $("range").focus();
-    });
+  const favs = getFavs(), favKeys = new Set(favs.map(destKey));
+  favs.forEach(f => box.appendChild(chip("★ " + f.name, () => useDest(f, f.name), null, "fav")));
+  getRecent().filter(e => !favKeys.has(destKey(e))).forEach(e => box.appendChild(chip((e.gmaps ? "Route: " : "") + e.label, () => useDest(e), () => {
+    store.set("recent", getRecent().filter(x => destKey(x) !== destKey(e))); renderRecent(); })));
+  // nach einer Suche: Ziel als festes Ziel speichern
+  if(lastDest && !favKeys.has(destKey(lastDest))){
+    const b = chip("☆ Als festes Ziel speichern", () => {
+      const f = $("favForm"); f.hidden = false; $("favName").value = ""; $("favFor").textContent = lastDest.label; $("favName").focus();
+    }, null, "add");
     box.appendChild(b);
-  });
+  }
   box.hidden = !box.children.length;
+  renderFavList();
 }
+function renderFavList(){
+  const ul = $("favList"); if(!ul) return; ul.innerHTML = "";
+  const favs = getFavs();
+  $("favEmpty").hidden = favs.length > 0;
+  favs.forEach((f, i) => {
+    const li = document.createElement("li");
+    const t = document.createElement("span"); t.innerHTML = `<b></b><small></small>`; t.querySelector("b").textContent = "★ " + f.name; t.querySelector("small").textContent = (f.gmaps ? "Google-Maps-Route: " : "") + f.label;
+    const up = document.createElement("button"); up.type = "button"; up.className = "btn small"; up.textContent = "▲"; up.setAttribute("aria-label", f.name + " nach oben"); up.disabled = i === 0;
+    up.addEventListener("click", () => { const l = getFavs(); [l[i-1], l[i]] = [l[i], l[i-1]]; store.set("favs", l); renderRecent(); });
+    const del = document.createElement("button"); del.type = "button"; del.className = "btn small"; del.textContent = "Löschen";
+    del.addEventListener("click", () => { store.set("favs", getFavs().filter((_, j) => j !== i)); renderRecent(); });
+    li.append(t, up, del); ul.appendChild(li);
+  });
+}
+function saveFav(){
+  const name = $("favName").value.trim();
+  if(!name){ $("favName").focus(); return; }
+  if(!lastDest) return;
+  const favs = getFavs().filter(f => destKey(f) !== destKey(lastDest) && f.name.toLowerCase() !== name.toLowerCase());
+  favs.push(Object.assign({}, lastDest, {name: name.slice(0, 24)}));
+  store.set("favs", favs.slice(-10));
+  $("favForm").hidden = true; renderRecent();
+  status("„" + name + "“ ist jetzt ein festes Ziel.");
+}
+$("favSave").addEventListener("click", saveFav);
+$("favName").addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); saveFav(); } });
+$("favCancel").addEventListener("click", () => { $("favForm").hidden = true; });
 renderRecent();
 loadData(); // Liste schon im Hintergrund laden
 updateSetSum();
@@ -764,7 +831,19 @@ $("installBtn").addEventListener("click", async () => {
   installEvt = null; $("installBox").hidden = true;
 });
 window.addEventListener("appinstalled", () => { $("installBox").hidden = true; });
-$("from").addEventListener("input", () => { if($("from").value.trim()) { gpsPos = null; $("from").placeholder = "Mein Standort"; } });
+// iPhone/iPad: Safari kennt keinen Installieren-Knopf, daher eine kurze Anleitung
+(() => {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  if(!ios || standalone || store.get("iosHintDone", false)) return;
+  const box = $("installBox");
+  box.innerHTML = `<span>Als App aufs iPhone holen: unten auf <b>Teilen</b> (Quadrat mit Pfeil) tippen, dann <b>„Zum Home-Bildschirm“</b>.</span>
+    <button class="btn small" id="iosHintOk" type="button">Verstanden</button>`;
+  box.hidden = false;
+  $("iosHintOk").addEventListener("click", () => { store.set("iosHintDone", true); box.hidden = true; });
+})();
+$("to").addEventListener("input", () => { if($("gmaps").value){ $("gmaps").value = ""; store.set("in:gmaps", ""); updateSetSum(); } });
+$("from").addEventListener("input", () => { if($("from").value.trim()) { gpsPos = null; $("from").placeholder = "Standort"; } });
 
 function shortLabel(s){ const parts = String(s).split(",").map(x=>x.trim()).filter(Boolean); return parts.slice(0,3).join(", "); }
 const fmtKm = n => Math.round(n).toLocaleString("de-DE");
@@ -825,7 +904,8 @@ function tripUrl(rt, charges, opt){
 }
 /* ---------- Karte (aufklappbar, wird erst beim Öffnen gezeichnet) ---------- */
 function drawMap(){
-  if(!mapData || !window.L || !$("map")) return;
+  if(!mapData || !$("map")) return;
+  if(!window.L){ $("map").innerHTML = '<p class="hint" style="padding:12px">Die Karte konnte gerade nicht geladen werden (keine Verbindung).</p>'; $("map").style.height = "auto"; return; }
   if(map){ map.remove(); map = null; }
   map = L.map("map", {zoomControl:true, attributionControl:true});
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
@@ -876,14 +956,15 @@ function render(rt, stops, plan, car, opt){
       ${others.length ? `<details class="alts"><summary>${others.length} andere Möglichkeit${others.length>1?"en":""} bis km ${fmtKm(first.reach)}</summary>${others.map(x => compactStop(x, plan.timeAt(x.km, 0))).join("")}</details>` : ""}
     </section>`;
   } else if(first.type === "arrive"){
-    const soon = stops.filter(x => x.km > 5).slice(0,3);
+    const mid = rt.km / 2;
+    const soon = stops.filter(x => x.km > 5).sort((a,b) => Math.abs(a.km-mid) - Math.abs(b.km-mid)).slice(0,3).sort((a,b) => a.km - b.km);
     html += `<section class="next"><div class="next-head"><strong>Kein Ladestopp nötig</strong><span>Ankunft ca. ${hhmm(first.at)}</span></div>
-      <div class="note">Ihr kommt mit ca. ${first.arriveKm} km Restreichweite an.${soon.length ? " Falls ihr trotzdem eine Pause machen wollt:" : ""}</div>
+      <div class="note">Ihr kommt mit ca. ${first.arriveKm} km Restreichweite an.${soon.length ? " Falls ihr trotzdem eine Pause machen wollt, etwa zur Halbzeit:" : ""}</div>
       ${soon.map(x => compactStop(x, plan.timeAt(x.km, 0))).join("")}</section>`;
   } else {
     html += `<section class="next"><div class="next-head"><strong>Kein passender Stopp in Reichweite</strong><span>bis km ${fmtKm(Math.max(0, first.reach))}</span></div>
-      <div class="note warn">${first.next ? `Der nächste Burger-Stopp liegt erst bei km ${fmtKm(first.next.km)}. Lade vorher an einer normalen Säule, oder stell in den Einstellungen Fußweg bzw. Umweg größer.` : stops.length ? "Danach kommt keiner mehr." : (opt.ffCount ? `An der Strecke gibt es ${opt.ffCount} Restaurants, aber keins mit passender Ladesäule in Laufweite. Stell in den Einstellungen den Fußweg größer.` : "An dieser Strecke gibt es keinen McDonald's oder Burger King. Stell in den Einstellungen den Umweg größer.")}</div>
-      ${first.next ? compactStop(first.next, plan.timeAt(first.next.km, 0)) : ""}</section>`;
+      <div class="note warn">${first.tight ? `Knapp: ${first.tight.brand==="mc"?"McDonald's":"Burger King"} bei km ${fmtKm(first.tight.km)} erreicht ihr noch, aber nur mit ca. ${first.tightRest} km Rest, also unter deiner Reserve von ${opt.buffer} km.` : first.next ? `Der nächste Burger-Stopp liegt erst bei km ${fmtKm(first.next.km)}. Lade vorher an einer normalen Säule, oder stell in den Einstellungen Fußweg bzw. Umweg größer.` : stops.length ? "Danach kommt keiner mehr." : (opt.ffCount ? `An der Strecke gibt es ${opt.ffCount} Restaurants, aber keins mit passender Ladesäule in Laufweite. Stell in den Einstellungen den Fußweg größer.` : "An dieser Strecke gibt es keinen McDonald's oder Burger King. Stell in den Einstellungen den Umweg größer.")}</div>
+      ${first.tight ? compactStop(first.tight, plan.timeAt(first.tight.km, 0)) : first.next ? compactStop(first.next, plan.timeAt(first.next.km, 0)) : ""}</section>`;
   }
 
   // 2) Unterwegs neu planen
@@ -963,7 +1044,8 @@ async function runPlan(replan){
   const btn = $("go");
   const opt = {
     mc:$("fMc").checked, bk:$("fBk").checked, dcOnly:$("fDc").checked, tesla:$("fTesla").checked,
-    start: $("depart").value ? new Date($("depart").value) : new Date(),
+    start: (() => { const v = $("depart").value; if(!v) return new Date(); const d = new Date(v);
+      if(d.getTime() < Date.now() - 30*60000){ $("depart").value = ""; updateSetSum(); return new Date(); } return d; })(),
     walk:+$("walk").value, detour:+$("detour").value,
     range:+$("range").value, buffer:+$("buffer").value||0, target:Math.min(100, Math.max(50, +$("target").value||80))
   };
@@ -979,6 +1061,7 @@ async function runPlan(replan){
   opt.carName = (CARS.find(x => x.id === carSel.value) || {name:"Auto"}).name;
   if(replan){ $("from").value = ""; gpsPos = null; opt.start = new Date(); window.scrollTo({top:0, behavior:"smooth"}); }
   btn.disabled = true; const rb = $("replanBtn"); if(rb) rb.disabled = true;
+  $("results").classList.add("stale");
   try{
     let start, dest, via = [];
     if(gm){
@@ -1028,10 +1111,12 @@ async function runPlan(replan){
     const plan = planLegs(stops, rt.km, car, opt.range, opt.buffer, opt.target, {start: opt.start, kmPerMin: rt.km / Math.max(1, rt.min)});
     addRecent(gm ? {gmaps: $("gmaps").value.trim(), label: opt.toLabel} : {to: $("to").value.trim(), label: opt.toLabel});
     status("");
+    $("results").classList.remove("stale");
     render(rt, stops, plan, car, opt);
   }catch(e){
     const blocked = e instanceof TypeError; // fetch scheitert, bevor ein Server antwortet
-    status(blocked ? "Keine Verbindung zu den Kartendiensten. Läuft die Seite in einer Vorschau (z. B. in der Claude-App)? Dort ist Internetzugriff gesperrt. Öffne sie über ihren Link im normalen Browser." : (e.message || String(e)), true);
+    if(!$("results").hidden) $("results").classList.add("stale");
+    status((blocked ? "Keine Internetverbindung zu den Kartendiensten. Bitte gleich nochmal versuchen." : (e.message || String(e))) + (!$("results").hidden ? " Unten siehst du noch die vorherige Planung (blass)." : ""), true);
   }
   finally{ btn.disabled = false; const rb = $("replanBtn"); if(rb) rb.disabled = false; }
 }
